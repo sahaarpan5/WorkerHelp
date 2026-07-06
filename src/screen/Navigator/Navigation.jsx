@@ -14,6 +14,7 @@ import ProfileScreen from '../Common/ProfileScreen';
 import ScheduleScreen from '../Common/ScheduleScreen';
 import RatingsScreen from '../Common/RatingsScreen';
 import EarningsScreen from '../Common/EarningsScreen';
+import SettingsScreen from '../Common/SettingsScreen';
 
 
 
@@ -37,6 +38,7 @@ const Navigation = () => {
         <Stack.Screen name="ScheduleScreen" component={ScheduleScreen} />
          <Stack.Screen name="RatingsScreen" component={RatingsScreen} />
           <Stack.Screen name="EarningsScreen" component={EarningsScreen} />
+          <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
       </Stack.Navigator>
 
     </SafeAreaProvider>

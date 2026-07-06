@@ -220,24 +220,28 @@ const DashboardScreen = ({ navigation }) => {
             label: 'Schedule',
             color: '#FF8C00',
             image: require('../../asset/calendar-outline.png'),
+            screen: 'ScheduleScreen',
         },
         {
             id: 2,
             label: 'Earnings',
             color: '#4CAF50',
             image: require('../../asset/growth.png'),
+            screen: 'EarningsScreen',
         },
         {
             id: 3,
-            label: 'Ratings',
-            color: '#FFD700',
-            image: require('../../asset/star.png'),
+            label: 'My Wallet',
+            color: '#2196F3',
+            image: require('../../asset/wallet.png'),
+            screen: 'WalletScreen',
         },
         {
             id: 4,
-            label: 'Support',
-            color: '#2196F3',
-            image: require('../../asset/support.png'),
+            label: 'Ratings',
+            color: '#FFD700',
+            image: require('../../asset/star.png'),
+            screen: 'RatingsScreen',
         },
     ];
 
@@ -289,6 +293,7 @@ const DashboardScreen = ({ navigation }) => {
             id: 7,
             label: 'Settings',
             image: require('../../asset/settings.png'),
+            screen: 'SettingsScreen',
         },
         {
             id: 8,
@@ -1519,7 +1524,10 @@ const DashboardScreen = ({ navigation }) => {
                     <Text style={styles.sectionTitle}>Quick Actions</Text>
                     <View style={styles.quickActionsGrid}>
                         {quickActions.map((action) => (
-                            <TouchableOpacity key={action.id} style={[styles.quickActionItem, isOfflineStatus && styles.quickActionItemOffline]}>
+                            <TouchableOpacity key={action.id} style={[styles.quickActionItem, isOfflineStatus && styles.quickActionItemOffline]}onPress={() => {
+                                    
+                                    navigation.navigate(action.screen);
+                                }}>
                                 <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
                                     <Image
                                         source={action.image}
