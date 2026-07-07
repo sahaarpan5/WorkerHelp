@@ -198,13 +198,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
     };
 
     const handleServiceComplete = () => {
-        if (selectedServices.length === 0) {
-            Alert.alert('No Services Selected', 'Please select at least one service to complete');
-            return;
-        }
-        Alert.alert('Success', 'Service completed successfully!');
-        setShowServicesModal(false);
-        setSelectedServices([]);
+        navigation.replace('JobCompletionScreen');
         setCurrentStatus('completed');
     };
 
