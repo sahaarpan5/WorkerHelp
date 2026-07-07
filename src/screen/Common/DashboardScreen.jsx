@@ -40,17 +40,7 @@ const DashboardScreen = ({ navigation }) => {
     const modalSlideAnim = useRef(new Animated.Value(50)).current;
     const statusMenuAnim = useRef(new Animated.Value(0)).current;
 
-    const weatherData = {
-        temperature: 28,
-        condition: 'Cloudy',
-        description: 'Carry Rain Protection',
-        humidity: 78,
-        windSpeed: 12,
-        icon: 'cloudy-outline',
-        feelsLike: 26,
-        precipitation: '40%',
-        uvIndex: 'Moderate',
-    };
+
 
 
 
@@ -1361,113 +1351,10 @@ const DashboardScreen = ({ navigation }) => {
 
 
                 {/* Weather Forecast */}
-                <View style={[styles.weatherContainer, isOfflineStatus && styles.weatherContainerOffline]}>
-                    <View style={styles.weatherHeader}>
-                        <View style={styles.weatherLeft}>
+               
 
-                            <Image
-                                source={require('../../asset/cloud.png')}
-                                style={{
-                                    width: 24,
-                                    height: 24,
-                                    tintColor: "#4A90D9",
 
-                                }}
-                            />
-                            <Text style={styles.weatherTitle}>Today's Weather</Text>
-                        </View>
-                        <Text style={styles.weatherUpdate}>Updated: Just now</Text>
-                    </View>
-
-                    <View style={styles.weatherMain}>
-                        <View style={styles.weatherTempSection}>
-                            <Text style={styles.weatherTemp}>{weatherData.temperature}°C</Text>
-                            <View style={styles.weatherConditionBadge}>
-                                <Image
-                                    source={require('../../asset/cloud.png')}
-                                    style={{
-                                        width: 16,
-                                        height: 16,
-                                        tintColor: "#4A90D9",
-
-                                    }}
-                                />
-
-                                
-                                <Text style={styles.weatherCondition}>{weatherData.condition}</Text>
-                            </View>
-                        </View>
-
-                        <View style={styles.weatherDivider} />
-
-                        <View style={styles.weatherDetails}>
-                            <View style={styles.weatherDetailItem}>
-                               
-                                <Image
-                                    source={require('../../asset/humidity.png')}
-                                    style={{
-                                        width: 18,
-                                        height: 18,
-                                        tintColor: "#4A90D9",
-
-                                    }}
-                                />
-                                <View style={styles.weatherDetailText}>
-                                    <Text style={styles.weatherDetailLabel}>Humidity</Text>
-                                    <Text style={styles.weatherDetailValue}>{weatherData.humidity}%</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.weatherDetailItem}>
-                                
-                                <Image
-                                    source={require('../../asset/thermometer.png')}
-                                    style={{
-                                        width: 18,
-                                        height: 18,
-                                        tintColor: "#FF6B35",
-
-                                    }}
-                                />
-                                <View style={styles.weatherDetailText}>
-                                    <Text style={styles.weatherDetailLabel}>Feels Like</Text>
-                                    <Text style={styles.weatherDetailValue}>{weatherData.feelsLike}°C</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.weatherDetailItem}>
-                                
-                                <Image
-                                    source={require('../../asset/wind.png')}
-                                    style={{
-                                        width: 18,
-                                        height: 18,
-                                        tintColor: "#2196F3",
-
-                                    }}
-                                />
-                                <View style={styles.weatherDetailText}>
-                                    <Text style={styles.weatherDetailLabel}>Wind</Text>
-                                    <Text style={styles.weatherDetailValue}>{weatherData.windSpeed} km/h</Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-
-                    <View style={styles.weatherAlert}>
-                        <Image
-                            source={require('../../asset/alert.png')}
-                            style={{
-                                width: 16,
-                                height: 16,
-                                tintColor: "#FF8C00",
-                            }}
-                        />
-                        <Text style={styles.weatherAlertText}>
-                            {weatherData.description}
-                        </Text>
-                    </View>
-                </View>
+                
 
                 {/* Today's Summary - Professional Colorful Cards */}
 
@@ -2959,7 +2846,7 @@ const styles = StyleSheet.create({
     },
     summaryCardOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.55)',
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
         padding: 14,
         justifyContent: 'center',
     },
@@ -3014,119 +2901,130 @@ const styles = StyleSheet.create({
     },
 
     weatherContainer: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 16,
-        padding: 16,
-        marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-        elevation: 3,
-        borderWidth: 1,
-        borderColor: '#E8F4FD',
-    },
-    weatherContainerOffline: {
-        backgroundColor: '#FAFAFA',
-        borderColor: '#E0E0E0',
-        opacity: 0.85,
-    },
-    weatherHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 12,
-    },
-    weatherLeft: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    weatherTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#1A1A1A',
-        marginLeft: 8,
-    },
-    weatherUpdate: {
-        fontSize: 10,
-        color: '#999',
-        fontWeight: '400',
-    },
-    weatherMain: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-    },
-    weatherTempSection: {
-        flex: 0.4,
-    },
-    weatherTemp: {
-        fontSize: 32,
-        fontWeight: '700',
-        color: '#1A1A1A',
-        marginBottom: 4,
-    },
-    weatherConditionBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#F0F7FF',
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
-        alignSelf: 'flex-start',
-    },
-    weatherCondition: {
-        fontSize: 12,
-        color: '#4A90D9',
-        fontWeight: '500',
-        marginLeft: 4,
-    },
-    weatherDivider: {
-        width: 1,
-        height: 50,
-        backgroundColor: '#F0F0F0',
-    },
-    weatherDetails: {
-        flex: 0.6,
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-        paddingHorizontal: 8,
-    },
-    weatherDetailItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    weatherDetailText: {
-        marginLeft: 4,
-    },
-    weatherDetailLabel: {
-        fontSize: 9,
-        color: '#999',
-        fontWeight: '400',
-    },
-    weatherDetailValue: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#1A1A1A',
-    },
-    weatherAlert: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF8F3',
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 10,
-        borderWidth: 1,
-        borderColor: '#FFE8DC',
-    },
-    weatherAlertText: {
-        fontSize: 12,
-        color: '#666',
-        marginLeft: 8,
-        flex: 1,
-        fontWeight: '500',
-    },
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+    height: 240,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  weatherContainerOffline: {
+    opacity: 0.85,
+  },
+  weatherBackgroundImage: {
+    borderRadius: 16,
+  },
+  weatherOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  weatherContent: {
+    flex: 1,
+    padding: 16,
+    justifyContent: 'space-between',
+  },
+  weatherHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  weatherLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weatherTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1A1A1A',
+    marginLeft: 8,
+  },
+  weatherUpdate: {
+    fontSize: 10,
+    color: '#999',
+    fontWeight: '400',
+  },
+  weatherMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+  },
+  weatherTempSection: {
+    flex: 0.4,
+  },
+  weatherTemp: {
+    fontSize: 36,
+    fontWeight: '700',
+    color: '#1A1A1A',
+    marginBottom: 4,
+  },
+  weatherConditionBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  weatherCondition: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  weatherDivider: {
+    width: 1,
+    height: 50,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  weatherDetails: {
+    flex: 0.6,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
+  },
+  weatherDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  weatherDetailText: {
+    marginLeft: 4,
+  },
+  weatherDetailLabel: {
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.7)',
+    fontWeight: '400',
+  },
+  weatherDetailValue: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  weatherAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  weatherAlertText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    marginLeft: 8,
+    flex: 1,
+    fontWeight: '500',
+  },
 });
 
 export default DashboardScreen;

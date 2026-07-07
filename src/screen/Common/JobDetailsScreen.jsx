@@ -16,7 +16,9 @@ import {
     Animated,
     ActivityIndicator,
     ImageBackground,
+    Linking,
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
 
 
 const { width, height } = Dimensions.get('window');
@@ -53,7 +55,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
         customerRating: 4.8,
         customerPhone: '+91 98765 43210',
         location: 'Andheri East, Mumbai - 400093',
-        coordinates: { latitude: 19.1136, longitude: 72.8697 },
+        coordinates: { latitude: 22.599873, longitude: 88.472367 },
         status: 'upcoming',
         time: '11:30 AM',
         distance: '2.5 km',
@@ -159,6 +161,34 @@ const JobDetailsScreen = ({ navigation, route }) => {
             scrollY.removeAllListeners();
         };
     }, []);
+
+    const openGoogleMaps = () => {
+        const { latitude, longitude } = jobDetails.coordinates;
+
+        const url = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
+
+        Linking.openURL(url).catch(() => {
+            Alert.alert('Error', 'Unable to open Google Maps.');
+        });
+    };
+
+    const navigateToLocation = async () => {
+        const { latitude, longitude } = jobDetails.coordinates;
+
+        const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`;
+
+        try {
+            const supported = await Linking.canOpenURL(url);
+
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert('Error', 'Google Maps is not available.');
+            }
+        } catch (error) {
+            Alert.alert('Error', 'Unable to open navigation.');
+        }
+    };
 
     // Simulate upload progress
     const simulateUploadProgress = () => {
@@ -291,21 +321,21 @@ const JobDetailsScreen = ({ navigation, route }) => {
             );
         } else if (currentStatus === 'upcoming') {
             return (
-                
-                    <TouchableOpacity style={[styles.primaryButton, { backgroundColor: ORANGE_COLOR }]} onPress={handleStartService}>
 
-                        <Image
-                            source={require('../../asset/play-circle-outline.png')}
-                            style={{
-                                width: 22,
-                                height: 22,
-                                tintColor: "#FFFFFF",
+                <TouchableOpacity style={[styles.primaryButton, { backgroundColor: ORANGE_COLOR }]} onPress={handleStartService}>
 
-                            }}
-                        />
-                        <Text style={styles.primaryButtonText}>Start Service</Text>
-                    </TouchableOpacity>
-             
+                    <Image
+                        source={require('../../asset/play-circle-outline.png')}
+                        style={{
+                            width: 22,
+                            height: 22,
+                            tintColor: "#FFFFFF",
+
+                        }}
+                    />
+                    <Text style={styles.primaryButtonText}>Start Service</Text>
+                </TouchableOpacity>
+
 
             );
         } else if (currentStatus === 'completed') {
@@ -559,16 +589,42 @@ const JobDetailsScreen = ({ navigation, route }) => {
 
                     <View style={styles.mapContainer}>
                         <View style={styles.mapPlaceholder}>
-                            <View style={styles.mapGrid}>
+                            {/* <View style={styles.mapGrid}>
                                 {[...Array(8)].map((_, i) => (
                                     <View key={i} style={[styles.mapGridLine, { top: i * 25 }]} />
                                 ))}
                                 {[...Array(6)].map((_, i) => (
                                     <View key={i} style={[styles.mapGridLineVertical, { left: i * 30 }]} />
                                 ))}
-                            </View>
+                            </View> */}
 
-                            <Animated.View
+                            {/* <MapView
+                                style={{ flex: 1 }}
+                                initialRegion={{
+                                    latitude: jobDetails.coordinates.latitude,
+                                    longitude: jobDetails.coordinates.longitude,
+                                    latitudeDelta: 0.01,
+                                    longitudeDelta: 0.01,
+                                }}
+                            >
+                                <Marker
+                                    coordinate={{
+                                        latitude: jobDetails.coordinates.latitude,
+                                        longitude: jobDetails.coordinates.longitude,
+                                    }}
+                                    title={jobDetails.customerName}
+                                    description={jobDetails.location}
+                                />
+                            </MapView> */}
+
+                            <Image
+                                style={styles.mapImage}
+                                source={{
+                                    uri: `https://maps.googleapis.com/maps/api/staticmap?center=${jobDetails.coordinates.latitude},${jobDetails.coordinates.longitude}&zoom=18&size=800x500&scale=2&maptype=satellite&markers=color:yellow|label:H|${jobDetails.coordinates.latitude},${jobDetails.coordinates.longitude}&key=AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g`,
+                                }}
+                            />
+
+                            {/* <Animated.View
                                 style={[
                                     styles.markerWrapper,
                                     { transform: [{ scale: markerPulseAnim }] }
@@ -586,20 +642,13 @@ const JobDetailsScreen = ({ navigation, route }) => {
                                         }}
                                     />
                                 </View>
-                            </Animated.View>
+                            </Animated.View> */}
 
-                            <View style={styles.mapLabels}>
-                                <View style={styles.mapLabel}>
-                                    <Text style={styles.mapLabelText}>📍 {jobDetails.customerName}</Text>
-                                </View>
-                                <View style={styles.mapLabelDistance}>
-                                    <Text style={styles.mapLabelDistanceText}>🚶 {jobDetails.distance}</Text>
-                                </View>
-                            </View>
+                           
                         </View>
 
                         <View style={styles.mapOverlay}>
-                            <TouchableOpacity style={styles.mapButton}>
+                            <TouchableOpacity style={styles.mapButton} onPress={openGoogleMaps}>
 
                                 <Image
                                     source={require('../../asset/location-outline.png')}
@@ -612,7 +661,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                                 />
                                 <Text style={styles.mapButtonText}>View in Maps</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.mapButton}>
+                            <TouchableOpacity style={styles.mapButton} onPress={navigateToLocation}>
                                 <Image
                                     source={require('../../asset/navigate-outline.png')}
                                     style={{
@@ -1164,7 +1213,7 @@ const styles = StyleSheet.create({
     },
     mapPlaceholder: {
         flex: 1,
-        backgroundColor: '#E8F0FE',
+        //backgroundColor: '#E8F0FE',
         justifyContent: 'center',
         alignItems: 'center',
         position: 'relative',
@@ -1574,6 +1623,10 @@ const styles = StyleSheet.create({
         color: '#4CAF50',
         fontWeight: '500',
     },
+    mapImage: {
+        width: '100%',
+        height: '100%',
+    }
 });
 
 export default JobDetailsScreen;
