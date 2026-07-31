@@ -984,7 +984,7 @@ const DashboardScreen = ({ navigation }) => {
                 >
                     <View style={styles.sidebarHeader}>
                         <View style={styles.sidebarProfile}>
-                            <Image source={{ uri: userData.profileImage }} style={styles.sidebarAvatar} />
+                            <Image source={require('../../asset/demo-user.jpg')} style={styles.sidebarAvatar} />
                             <View style={styles.sidebarUserInfo}>
                                 <Text style={styles.sidebarUserName}>{userData.name}</Text>
                                 <TouchableOpacity
@@ -1362,7 +1362,7 @@ const DashboardScreen = ({ navigation }) => {
 
 
                 <ImageBackground
-                    source={{ uri: 'https://images.unsplash.com/photo-1557804506-669a67965ba0?w=800&h=300&fit=crop' }}
+                    source={require('../../asset/cleaning.jpg')}
                     style={styles.summaryCardContainer}
                     imageStyle={styles.summaryCardImage}
                 >

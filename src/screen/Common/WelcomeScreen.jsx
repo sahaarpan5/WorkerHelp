@@ -5,6 +5,7 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
+  Image,
 } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
@@ -70,11 +71,11 @@ const WelcomeScreen = ({ navigation }) => {
 
   //   return () => clearTimeout(timer);
 
-    
+
   // }, [onFinish]);
 
 
-    useEffect(() => {
+  useEffect(() => {
     // Start logo animation
     Animated.parallel([
       Animated.timing(logoFade, {
@@ -165,12 +166,19 @@ const WelcomeScreen = ({ navigation }) => {
             },
           ]}
         >
-          <View style={styles.logoWrapper}>
-            <View style={styles.logoIcon}>
-              <Text style={styles.logoIconText}>🏠</Text>
-            </View>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoBadgeText}>+</Text>
+          <View style={styles.logoOuterRing}>
+            <View style={styles.logoInnerRing}>
+              <View style={styles.logoIcon}>
+                <Image
+                  source={require('../../asset/genlogo.png')} // Update the path as needed
+                  style={{
+                    width: 48,
+                    height: 48,
+                    resizeMode: 'contain',
+
+                  }}
+                />
+              </View>
             </View>
           </View>
         </Animated.View>
@@ -295,21 +303,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoIcon: {
-    width: 110,
-    height: 110,
-    borderRadius: 28,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#FF8C00',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 10,
-    borderWidth: 2.5,
-    borderColor: '#FF8C00',
-  },
+
   logoIconText: {
     fontSize: 50,
   },
@@ -443,6 +437,44 @@ const styles = StyleSheet.create({
     height: 3,
     borderRadius: 1.5,
     backgroundColor: '#D0D0D0',
+  },
+    logoOuterRing: {
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+  },
+  logoInnerRing: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 6,
+  },
+  logoIcon: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 20,
+    elevation: 4,
   },
 });
 

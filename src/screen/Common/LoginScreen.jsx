@@ -20,7 +20,7 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-const LoginScreen = ({navigation}) => {
+const LoginScreen = ({ navigation }) => {
     // Screen states: 'phone' | 'otp' | 'pin'
     const [screen, setScreen] = useState('phone');
     const [phoneNumber, setPhoneNumber] = useState('');
@@ -44,23 +44,12 @@ const LoginScreen = ({navigation}) => {
     const confirmPinRefs = useRef([]);
 
     // Service images for carousel - only images, no text
-    const serviceImages = [
-        {
-            uri: 'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=800&h=500&fit=crop',
-        },
-        {
-            uri: 'https://images.unsplash.com/photo-1621905252507-b35492cc74b4?w=800&h=500&fit=crop',
-        },
-        {
-            uri: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=800&h=500&fit=crop',
-        },
-        {
-            uri: 'https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?w=800&h=500&fit=crop',
-        },
-        {
-            uri: 'https://images.unsplash.com/photo-1581093588401-fbb62a02f120?w=800&h=500&fit=crop',
-        },
-    ];
+   const serviceImages = [
+  { image: require('../../asset/deep.png') },
+  { image: require('../../asset/sofa.png') },
+  { image: require('../../asset/maid.png') },
+  { image: require('../../asset/bathroom.png') },
+];
 
     useEffect(() => {
         Animated.parallel([
@@ -353,16 +342,24 @@ const LoginScreen = ({navigation}) => {
                     <View style={styles.heroSection}>
                         <Animated.View style={{ flex: 1, opacity: imageFadeAnim }}>
                             <ImageBackground
-                                source={{ uri: currentService.uri }}
+                               source={currentService.image}
                                 style={styles.heroImage}
                                 imageStyle={styles.heroImageStyle}
                             >
                                 <View style={styles.heroOverlay}>
                                     <View style={styles.heroContent}>
                                         <View style={styles.brandContainer}>
-                                            <View style={styles.brandIcon}>
-                                                <Text style={styles.brandEmoji}>🏠</Text>
-                                            </View>
+                                            
+                                                <Image
+                                                    source={require('../../asset/genlogo.png')} // Update the path as needed
+                                                    style={{
+                                                        width: 48,
+                                                        height: 48,
+                                                        resizeMode: 'contain',
+
+                                                    }}
+                                                />
+                                           
                                             <View>
                                                 <Text style={styles.brandName}>HomeHelp</Text>
                                                 <Text style={styles.brandSubName}>Partner</Text>
@@ -878,6 +875,15 @@ const styles = StyleSheet.create({
         height: 3,
         borderRadius: 1.5,
         backgroundColor: '#D0D0D0',
+    },
+    logoIcon: {
+        
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 20,
+        elevation: 4,
     },
 });
 
