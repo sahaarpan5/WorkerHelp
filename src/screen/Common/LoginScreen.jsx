@@ -17,6 +17,9 @@ import {
     ImageBackground,
     SafeAreaView,
 } from 'react-native';
+import API from '../../util/API';
+import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
@@ -44,12 +47,12 @@ const LoginScreen = ({ navigation }) => {
     const confirmPinRefs = useRef([]);
 
     // Service images for carousel - only images, no text
-   const serviceImages = [
-  { image: require('../../asset/deep.png') },
-  { image: require('../../asset/sofa.png') },
-  { image: require('../../asset/maid.png') },
-  { image: require('../../asset/bathroom.png') },
-];
+    const serviceImages = [
+        { image: require('../../asset/deep.png') },
+        { image: require('../../asset/sofa.png') },
+        { image: require('../../asset/maid.png') },
+        { image: require('../../asset/bathroom.png') },
+    ];
 
     useEffect(() => {
         Animated.parallel([
@@ -104,30 +107,139 @@ const LoginScreen = ({ navigation }) => {
         return () => clearInterval(interval);
     }, []);
 
-    const handlePhoneSubmit = () => {
-        if (phoneNumber.length < 10) {
-            Alert.alert('Invalid Number', 'Please enter a valid mobile number');
+
+
+
+    const handlePhoneSubmit = async () => {
+        if (phoneNumber.length !== 10) {
+            Alert.alert(
+                'Invalid Number',
+                'Please enter a valid 10-digit mobile number'
+            );
             return;
         }
-        setIsLoading(true);
-        setTimeout(() => {
+
+        try {
+            setIsLoading(true);
+
+            const response = await axios.post(API.SEND_OTP, {
+                mobileNo: phoneNumber,
+                loginType: 'Partner',
+            });
+
+            console.log('SEND OTP RESPONSE:', response.data);
+
+            if (response.data?.success === true) {
+                Alert.alert(
+                    'OTP Sent',
+                    response.data?.message || 'Unable to send OTP'
+                );
+                setScreen('otp');
+                setOtp(['', '', '', '']);
+
+
+
+            } else {
+                Alert.alert(
+                    'OTP Failed',
+                    response.data?.message || 'Unable to send OTP'
+                );
+            }
+
+        } catch (error) {
+            console.log(
+                'SEND OTP ERROR:',
+                error?.response?.data || error?.message
+            );
+
+            Alert.alert(
+                'Error',
+                error?.response?.data?.message ||
+                'Unable to send OTP. Please try again.'
+            );
+
+        } finally {
             setIsLoading(false);
-            setScreen('otp');
-            setOtp(['1', '2', '3', '4']);
-        }, 1500);
+        }
     };
 
-    const handleOtpSubmit = () => {
-        const otpValue = otp.join('');
-        if (otpValue.length < 4) {
-            Alert.alert('Invalid OTP', 'Please enter the complete OTP');
+   
+
+    const handleOtpSubmit = async () => {
+        const otpString = otp.join('');
+
+        if (otpString.length !== 4) {
+            Alert.alert(
+                'Invalid OTP',
+                'Please enter the complete 4-digit OTP'
+            );
             return;
         }
-        setIsLoading(true);
-        setTimeout(() => {
+
+        try {
+            setIsLoading(true);
+
+            const response = await axios.post(API.VERIFY_OTP, {
+                mobileNo: phoneNumber,
+                otp: otpString,
+                loginType: 'Partner',
+            });
+
+            console.log('VERIFY OTP RESPONSE:', response.data);
+
+            if (response.data?.success === true) {
+
+                
+
+                // New customer → Signup
+                if (response.data?.isRegistered === false) {
+
+                    navigation.replace('OnboardingScreen', {
+                        mobileNo: response.data?.uniqueMobileNo || phoneNumber,
+                        mobileVerified: response.data?.mobileVerified,
+                        token: response.data?.token,
+
+                    });
+
+
+                }
+                // Existing customer → Dashboard
+                else if (response.data?.isRegistered === true) {
+                    await AsyncStorage.setItem(
+                        'customerMob',
+                        String(response.data?.uniqueMobileNo || phoneNumber)
+                    );
+                    await AsyncStorage.setItem(
+                        'token',
+                        response.data.token
+                    );
+
+                    navigation.replace('DashboardScreen');
+                }
+
+            } else {
+                Alert.alert(
+                    'OTP Verification Failed',
+                    response.data?.message || 'Invalid OTP'
+                );
+            }
+
+        } catch (error) {
+
+            console.log(
+                'VERIFY OTP ERROR:',
+                error?.response?.data || error?.message
+            );
+
+            Alert.alert(
+                'Verification Failed',
+                error?.response?.data?.message ||
+                'Unable to verify OTP. Please try again.'
+            );
+
+        } finally {
             setIsLoading(false);
-            setScreen('pin');
-        }, 1500);
+        }
     };
 
     const handlePinSubmit = () => {
@@ -222,7 +334,7 @@ const LoginScreen = ({ navigation }) => {
                     />
                 ))}
             </View>
-            <TouchableOpacity style={styles.resendButton}>
+            <TouchableOpacity style={styles.resendButton} onPress={handlePhoneSubmit}>
                 <Text style={styles.resendText}>Didn't receive code? <Text style={styles.resendHighlight}>Resend</Text></Text>
             </TouchableOpacity>
         </View>
@@ -342,24 +454,24 @@ const LoginScreen = ({ navigation }) => {
                     <View style={styles.heroSection}>
                         <Animated.View style={{ flex: 1, opacity: imageFadeAnim }}>
                             <ImageBackground
-                               source={currentService.image}
+                                source={currentService.image}
                                 style={styles.heroImage}
                                 imageStyle={styles.heroImageStyle}
                             >
                                 <View style={styles.heroOverlay}>
                                     <View style={styles.heroContent}>
                                         <View style={styles.brandContainer}>
-                                            
-                                                <Image
-                                                    source={require('../../asset/genlogo.png')} // Update the path as needed
-                                                    style={{
-                                                        width: 48,
-                                                        height: 48,
-                                                        resizeMode: 'contain',
 
-                                                    }}
-                                                />
-                                           
+                                            <Image
+                                                source={require('../../asset/genlogo.png')} // Update the path as needed
+                                                style={{
+                                                    width: 48,
+                                                    height: 48,
+                                                    resizeMode: 'contain',
+
+                                                }}
+                                            />
+
                                             <View>
                                                 <Text style={styles.brandName}>HomeHelp</Text>
                                                 <Text style={styles.brandSubName}>Partner</Text>
@@ -877,7 +989,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#D0D0D0',
     },
     logoIcon: {
-        
+
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
