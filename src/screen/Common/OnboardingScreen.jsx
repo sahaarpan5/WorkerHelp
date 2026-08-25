@@ -14,10 +14,37 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-const OnboardingScreen = ({ navigation }) => {
+const OnboardingScreen = ({ navigation, route }) => {
     const [currentStep, setCurrentStep] = useState(0);
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const slideAnim = useRef(new Animated.Value(0)).current;
+     const [phoneNumber, setPhoneNumber] = useState('');
+    const [token, setToken] = useState('');
+    const [mobileVerified, setMobileVerified] = useState(false);
+
+
+    useEffect(() => {
+        const mobileNo = route.params?.mobileNo;
+        const verified = route.params?.mobileVerified;
+        const token = route.params?.token
+
+
+        console.log('Mobile No:', mobileNo);
+        console.log('Mobile Verified:', verified);
+        console.log('token:', token);
+
+        if (mobileNo) {
+            setPhoneNumber(mobileNo);
+        }
+        if (token) {
+            setToken(token);
+        }
+
+
+        setMobileVerified(verified);
+        
+
+    }, [route.params]);
 
     const onboardingData = [
         {
@@ -32,7 +59,7 @@ const OnboardingScreen = ({ navigation }) => {
             title: 'Work on Your\nTerms, Always',
             description: 'Be your own boss. Choose your working hours, accept services that match your skills, and take breaks whenever you need.',
             icon: '💪',
-           illustration: require('../../asset/gig-boss.jpg'),
+            illustration: require('../../asset/gig-boss.jpg'),
         },
         {
             id: 3,
@@ -89,7 +116,14 @@ const OnboardingScreen = ({ navigation }) => {
     };
 
     const handleGetStarted = () => {
-        navigation.replace('SignupScreen');
+        
+
+         navigation.replace('SignupScreen', {
+                        mobileNo: phoneNumber,
+                        mobileVerified: mobileVerified,
+                        token: token,
+
+                    });
     };
 
     const renderDots = () => {
@@ -170,7 +204,7 @@ const OnboardingScreen = ({ navigation }) => {
                                 style={[styles.navButton, styles.prevButton]}
                                 onPress={handlePrev}
                             >
-                                
+
                                 <Image
                                     source={require('../../asset/arrow-back.png')}
                                     style={{
@@ -192,8 +226,8 @@ const OnboardingScreen = ({ navigation }) => {
                                 onPress={handleNext}
                             >
                                 <Text style={[styles.navButtonText, styles.nextButtonText]}>Next</Text>
-                                
-                                 <Image
+
+                                <Image
                                     source={require('../../asset/right-arrow.png')}
                                     style={{
                                         width: 22,
@@ -212,8 +246,8 @@ const OnboardingScreen = ({ navigation }) => {
                     <View style={styles.statsRow}>
                         <View style={styles.statItem}>
                             <View style={styles.statIconContainer}>
-                                
-                                 <Image
+
+                                <Image
                                     source={require('../../asset/star-fill.png')}
                                     style={{
                                         width: 16,
@@ -231,7 +265,7 @@ const OnboardingScreen = ({ navigation }) => {
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
                             <View style={styles.statIconContainer}>
-                               
+
                                 <Image
                                     source={require('../../asset/people.png')}
                                     style={{
@@ -250,7 +284,7 @@ const OnboardingScreen = ({ navigation }) => {
                         <View style={styles.statDivider} />
                         <View style={styles.statItem}>
                             <View style={styles.statIconContainer}>
-                               
+
                                 <Image
                                     source={require('../../asset/growth.png')}
                                     style={{
@@ -275,16 +309,16 @@ const OnboardingScreen = ({ navigation }) => {
                             onPress={handleGetStarted}
                         >
                             <Text style={styles.getStartedText}>Get Started</Text>
-                            
-                            <Image
-                                    source={require('../../asset/right-arrow.png')}
-                                    style={{
-                                        width: 22,
-                                        height: 22,
-                                        tintColor: "#FFFFFF",
 
-                                    }}
-                                />
+                            <Image
+                                source={require('../../asset/right-arrow.png')}
+                                style={{
+                                    width: 22,
+                                    height: 22,
+                                    tintColor: "#FFFFFF",
+
+                                }}
+                            />
                         </TouchableOpacity>
                     )}
                 </Animated.View>

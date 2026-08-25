@@ -3,7 +3,7 @@ const BASE_URL = 'https://www.geniushomehelp.com/api';
 const API = {
      SEND_OTP: `${BASE_URL}/Auth/send-otp`,
      VERIFY_OTP: `${BASE_URL}/Auth/verify-otp`,
-     REGISTER_PARTNER: `${BASE_URL}/Customer/register`,
+     REGISTER_PARTNER: `${BASE_URL}/Partner/Register`,
 };
 
 // Add more endpoints here as needed

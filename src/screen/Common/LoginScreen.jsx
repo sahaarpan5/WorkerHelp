@@ -119,6 +119,8 @@ const LoginScreen = ({ navigation }) => {
             return;
         }
 
+       
+
         try {
             setIsLoading(true);
 
@@ -175,6 +177,8 @@ const LoginScreen = ({ navigation }) => {
             );
             return;
         }
+
+        
 
         try {
             setIsLoading(true);

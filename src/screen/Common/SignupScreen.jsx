@@ -16,19 +16,32 @@ import {
     SafeAreaView,
     FlatList,
     Image,
+    PermissionsAndroid,
+    Modal,
+    TouchableWithoutFeedback
 } from 'react-native';
 
-
+import Geolocation from '@react-native-community/geolocation';
+import MapView, { Marker } from 'react-native-maps';
+import axios from 'axios';
+import API from '../../util/API';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchCamera ,launchImageLibrary} from 'react-native-image-picker';
 const { width, height } = Dimensions.get('window');
 
-const SignupScreen = ({ navigation }) => {
+
+const SignupScreen = ({ navigation, route }) => {
     // Step management
+
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [token, setToken] = useState('');
+    const [mobileVerified, setMobileVerified] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState([]);
     const totalSteps = 5;
 
     // Step 1: Phone & OTP
-    const [phoneNumber, setPhoneNumber] = useState('');
+
     const [otp, setOtp] = useState(['', '', '', '']);
     const [isPhoneVerified, setIsPhoneVerified] = useState(false);
     const [isOtpSent, setIsOtpSent] = useState(false);
@@ -63,19 +76,197 @@ const SignupScreen = ({ navigation }) => {
     const pinRefs = useRef([]);
     const confirmPinRefs = useRef([]);
 
+    const [latitude, setLatitude] = useState(null);
+    const [longitude, setLongitude] = useState(null);
+    const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+    const [emailID, setEmailID] = useState('');
+    const [password, setPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [selectedDocId, setSelectedDocId] = useState(null);
+    const [uploadProgress, setUploadProgress] = useState(0);
+
+    const COLORS = {
+        gold: '#C9A84C',
+        goldLight: '#D4AF37',
+        goldDark: '#B8943E',
+        goldFade: 'rgba(201, 168, 76, 0.1)',
+        goldFadeStrong: 'rgba(201, 168, 76, 0.2)',
+        white: '#FFFFFF',
+        dark: '#1A1A1A',
+        textLight: '#666666',
+        lightBg: '#F8F6F0',
+        border: '#E8E3D8',
+        success: '#2ECC71',
+        shadow: 'rgba(201, 168, 76, 0.15)',
+        purple: '#6C5CE7',
+        pink: '#FD79A8',
+        blue: '#0984E3',
+        green: '#00B894',
+    };
+
+    useEffect(() => {
+        const mobileNo = route.params?.mobileNo;
+        const verified = route.params?.mobileVerified;
+        const token = route.params?.token
+
+
+        console.log('Mobile No:', mobileNo);
+        console.log('Mobile Verified:', verified);
+        console.log('token:', token);
+
+        if (mobileNo) {
+            setPhoneNumber(mobileNo);
+        }
+        if (token) {
+            setToken(token);
+        }
+
+
+        setMobileVerified(verified);
+        if (verified) {
+            markStepComplete(0);
+            goToNextStep();
+        }
+
+
+    }, [route.params]);
+
+    useEffect(() => {
+        if (currentStep === 2) {
+            fetchCurrentLocation();
+        }
+    }, [currentStep]);
+
+
+
+
+
+    const requestLocationPermission = async () => {
+        if (Platform.OS !== 'android') {
+            return true;
+        }
+
+        try {
+            const granted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                {
+                    title: 'Location Permission',
+                    message:
+                        'HomeHelp Partner needs your location to find nearby opportunities and set your service location.',
+                    buttonPositive: 'Allow',
+                    buttonNegative: 'Cancel',
+                }
+            );
+
+            return granted === PermissionsAndroid.RESULTS.GRANTED;
+        } catch (error) {
+            console.log('Permission error:', error);
+            return false;
+        }
+    };
+
+    const fetchCurrentLocation = async () => {
+        setIsFetchingLocation(true);
+
+        const hasPermission = await requestLocationPermission();
+
+        if (!hasPermission) {
+            setIsFetchingLocation(false);
+
+            Alert.alert(
+                'Location Permission Required',
+                'Please allow location permission from your phone settings to continue.'
+            );
+
+            return;
+        }
+
+        Geolocation.getCurrentPosition(
+            async (position) => {
+                console.log('Current position:', position);
+
+                const { latitude, longitude } = position.coords;
+
+                setLatitude(latitude);
+                setLongitude(longitude);
+
+                try {
+                    const response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
+                        {
+                            headers: {
+                                'User-Agent': 'HomeHelpPartnerApp/1.0',
+                            },
+                        }
+                    );
+
+                    const data = await response.json();
+
+                    console.log('Address:', data);
+
+                    if (data?.display_name) {
+                        setLocation(data.display_name);
+                    } else {
+                        setLocation(`${latitude}, ${longitude}`);
+                    }
+                } catch (error) {
+                    console.log('Address lookup error:', error);
+
+                    setLocation(`${latitude}, ${longitude}`);
+                }
+
+                setIsFetchingLocation(false);
+            },
+
+            (error) => {
+                console.log('Location error:', error);
+
+                setIsFetchingLocation(false);
+
+                if (error.code === 3) {
+                    Alert.alert(
+                        'Location Timeout',
+                        'Unable to get your current location. Please make sure GPS/Location is turned on and try again.'
+                    );
+                } else if (error.code === 1) {
+                    Alert.alert(
+                        'Permission Denied',
+                        'Please allow location permission to continue.'
+                    );
+                } else {
+                    Alert.alert(
+                        'Location Error',
+                        'Unable to determine your current location. Please try again.'
+                    );
+                }
+            },
+
+            {
+                enableHighAccuracy: false,
+                timeout: 30000,
+                maximumAge: 60000,
+                distanceFilter: 10,
+            }
+        );
+    };
+
     const genderOptions = [
         {
-            id: 'male',
+            id: 'Male',
             label: 'Male',
             image: require('../../asset/male.png'),
         },
         {
-            id: 'female',
+            id: 'Female',
             label: 'Female',
             image: require('../../asset/female.png'),
         },
         {
-            id: 'other',
+            id: 'Other',
             label: 'Other',
             image: require('../../asset/transgender.png'),
         },
@@ -100,12 +291,7 @@ const SignupScreen = ({ navigation }) => {
             image: require('../../asset/pan.png'),
             description: 'Tax identification number',
         },
-        {
-            id: 'certificate',
-            label: 'Course Certificate',
-            image: require('../../asset/certificate.png'),
-            description: 'Professional certification',
-        },
+
         {
             id: 'driving',
             label: 'Driving License',
@@ -212,22 +398,196 @@ const SignupScreen = ({ navigation }) => {
         }, 1500);
     };
 
+
+    const validatePassword = (pass) => {
+        if (pass.length < 6) {
+            return { valid: false, message: 'Password must be at least 6 characters' };
+        }
+        if (!/[A-Z]/.test(pass)) {
+            return { valid: false, message: 'Password must contain at least one uppercase letter' };
+        }
+        if (!/[a-z]/.test(pass)) {
+            return { valid: false, message: 'Password must contain at least one lowercase letter' };
+        }
+        if (!/[0-9]/.test(pass)) {
+            return { valid: false, message: 'Password must contain at least one number' };
+        }
+        return { valid: true, message: 'Password is strong' };
+    };
+
     const handleCompletePersonalDetails = () => {
-        if (!firstName.trim() || !lastName.trim() || !gender || !city.trim() || !dob) {
-            Alert.alert('Missing Fields', 'Please fill all required fields');
+
+
+        if (!firstName.trim()) {
+            Alert.alert('Required', 'Please enter your first name');
+
+            return;
+        }
+        if (!lastName.trim()) {
+            Alert.alert('Required', 'Please enter your last name');
+
+            return;
+        }
+        if (!emailID) {
+            Alert.alert('Required', 'Please enter your email id');
+
+            return;
+        }
+
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+        if (!emailRegex.test(emailID.trim())) {
+            Alert.alert('Validation', 'Please enter a valid email id');
+
+            return;
+        }
+        if (!gender) {
+            Alert.alert('Required', 'Please select your gender');
+            return;
+        }
+
+        if (!dob) {
+            Alert.alert('Required', 'Please enter Date of birth');
+
+            return;
+        }
+
+        if (!password) {
+            Alert.alert('Required', 'Please enter a password');
+
+            return;
+        }
+
+        const passwordValidation = validatePassword(password);
+        if (!passwordValidation.valid) {
+            Alert.alert('Password Requirements', passwordValidation.message);
+
+            return;
+        }
+
+        if (!confirmPassword) {
+            Alert.alert('Required', 'Please confirm your password');
+
+            return;
+        }
+
+        if (password !== confirmPassword) {
+            Alert.alert('Password Mismatch', 'Passwords do not match. Please try again.');
+
             return;
         }
         markStepComplete(1);
         goToNextStep();
     };
 
-    const handleCompleteLocation = () => {
+    const formatDobForApi = (dob) => {
+        if (!dob) return '';
+
+        const [day, month, year] = dob.split('/');
+
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+    };
+
+    const handleCompleteLocation = async () => {
         if (!location.trim()) {
             Alert.alert('Missing Location', 'Please enter your location');
             return;
         }
+
         markStepComplete(2);
         goToNextStep();
+
+
+        // try {
+        //     setIsLoading(true);
+
+
+
+        //     const requestBody = {
+        //         firstName: firstName.trim(),
+        //         lastName: lastName.trim(),
+        //         mobileNo: phoneNumber.trim(),
+        //         email: emailID.trim(),
+        //         gender: gender,
+        //         dob: formatDobForApi(dob),
+        //         password: password,
+        //         latitude: latitude,
+        //         longitude: longitude,
+
+        //     };
+
+        //     console.log('CREATE ACCOUNT REQUEST:', requestBody);
+
+        //     const response = await axios.post(
+        //         API.REGISTER_PARTNER,
+        //         requestBody,
+        //         {
+        //             headers: {
+        //                 'Content-Type': 'application/json',
+        //                 Authorization: `Bearer ${token}`,
+        //             },
+        //         }
+        //     );
+
+        //     console.log(
+        //         'CREATE ACCOUNT RESPONSE:',
+        //         response.data
+        //     );
+
+        //     if (response.data?.success === true) {
+
+        //         // Save new token
+        //         if (response.data?.token) {
+        //             await AsyncStorage.setItem(
+        //                 'token',
+        //                 response.data.token
+        //             );
+        //         }
+
+        //         // Save User ID
+
+
+        //         await AsyncStorage.setItem(
+        //             'customerMob',
+        //             String(phoneNumber)
+        //         );
+
+
+
+        //         markStepComplete(2);
+        //         goToNextStep();
+
+
+
+        //     } else {
+
+        //         Alert.alert(
+        //             'Create Account Failed',
+        //             response.data?.message ||
+        //             'Unable to create account.'
+        //         );
+        //     }
+
+        // } catch (error) {
+
+        //     console.log(
+        //         'CREATE ACCOUNT ERROR:',
+        //         error?.response?.data || error?.message
+        //     );
+
+        //     Alert.alert(
+        //         'Create Account Failed',
+        //         error?.response?.data?.message ||
+        //         'Something went wrong. Please try again.'
+        //     );
+
+        // } finally {
+        //     setIsLoading(false);
+        // }
+
+
+
+
     };
 
     const handleCompleteDocuments = () => {
@@ -256,23 +616,7 @@ const SignupScreen = ({ navigation }) => {
         ]);
     };
 
-    const toggleDocument = (docId) => {
-        if (selectedDocuments.includes(docId)) {
-            setSelectedDocuments(selectedDocuments.filter(id => id !== docId));
-            const newUploads = { ...uploadedFiles };
-            delete newUploads[docId];
-            setUploadedFiles(newUploads);
-        } else {
-            setSelectedDocuments([...selectedDocuments, docId]);
-        }
-    };
 
-    const simulateUpload = (docId) => {
-        setUploadedFiles({
-            ...uploadedFiles,
-            [docId]: { name: `${docId}_document.pdf`, size: '2.4 MB', uploaded: true }
-        });
-    };
 
     const renderStepIndicator = () => {
         return (
@@ -583,6 +927,23 @@ const SignupScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.inputCard}>
+                <Text style={styles.inputLabel}>Email ID</Text>
+                <View style={styles.cityContainer}>
+                    <TextInput
+                        style={[styles.textInput]}
+                        placeholder="Type your email id"
+                        placeholderTextColor="#999"
+                        value={emailID}
+                        onChangeText={setEmailID}
+                    />
+
+                </View>
+            </View>
+
+
+
+
+            <View style={styles.inputCard}>
                 <Text style={styles.inputLabel}>Gender</Text>
                 <View style={styles.genderContainer}>
                     {genderOptions.map((option) => (
@@ -628,32 +989,143 @@ const SignupScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.inputCard}>
-                <Text style={styles.inputLabel}>City</Text>
-                <View style={styles.cityContainer}>
-                    <TextInput
-                        style={[styles.textInput, styles.cityInput]}
-                        placeholder="Type your city"
-                        placeholderTextColor="#999"
-                        value={city}
-                        onChangeText={setCity}
-                    />
-                    <ScrollView
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        style={styles.citySuggestions}
-                    >
-                        {cities.map((c) => (
-                            <TouchableOpacity
-                                key={c}
-                                style={styles.cityChip}
-                                onPress={() => setCity(c)}
-                            >
-                                <Text style={styles.cityChipText}>{c}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </ScrollView>
+                <View style={styles.inputLabelContainer}>
+                    <Text style={styles.inputLabel}>Password</Text>
+                    <Text style={styles.inputRequired}>*</Text>
                 </View>
+
+
+                <View style={[styles.cityContainer, {
+                    flexDirection: 'row', backgroundColor: '#F8F9FA',
+                    borderRadius: 10,
+                    fontSize: 15,
+                    color: '#1A1A1A',
+                    borderWidth: 1.5,
+                    borderColor: '#E8E8E8',
+                    alignContent: 'center',
+
+                }]}>
+
+                    <TextInput
+
+                        style={{ flex: 1 }}
+                        placeholder="Create a strong password"
+                        placeholderTextColor="#999"
+                        value={password}
+                        onChangeText={setPassword}
+                        secureTextEntry={!showPassword}
+                        returnKeyType="next"
+
+                    />
+                    <TouchableOpacity
+                        onPress={() => setShowPassword(!showPassword)}
+
+                    >
+                        <Image
+                            source={
+                                showPassword
+                                    ? require('../../asset/eye_open.png')
+                                    : require('../../asset/eye_close.png')
+                            }
+                            style={{
+                                width: 20,
+                                height: 20,
+                                resizeMode: 'contain',
+                                tintColor: COLORS.textLight,
+                                marginTop: 10
+                            }}
+                        />
+                    </TouchableOpacity>
+                </View>
+                {password.length > 0 && (
+                    <View style={styles.passwordStrength}>
+                        <Text style={[
+                            styles.passwordStrengthText,
+                            password.length < 6 ? { color: COLORS.red } :
+                                password.length < 8 ? { color: COLORS.orange } :
+                                    { color: COLORS.success }
+                        ]}>
+                            {password.length < 6 ? 'Weak' :
+                                password.length < 8 ? 'Medium' : 'Strong'}
+                        </Text>
+                        <View style={styles.strengthBar}>
+                            <View style={[
+                                styles.strengthFill,
+                                {
+                                    width: password.length < 6 ? '33%' :
+                                        password.length < 8 ? '66%' : '100%',
+                                    backgroundColor: password.length < 6 ? COLORS.red :
+                                        password.length < 8 ? COLORS.orange : COLORS.success
+                                }
+                            ]} />
+                        </View>
+                    </View>
+                )}
+
             </View>
+
+
+            <View style={styles.inputCard}>
+                <View style={styles.inputLabelContainer}>
+                    <Text style={styles.inputLabel}>Confirm Password</Text>
+                    <Text style={styles.inputRequired}>*</Text>
+                </View>
+
+
+                <View style={[styles.cityContainer, {
+                    flexDirection: 'row', backgroundColor: '#F8F9FA',
+                    borderRadius: 10,
+                    fontSize: 15,
+                    color: '#1A1A1A',
+                    borderWidth: 1.5,
+                    borderColor: '#E8E8E8',
+                    alignContent: 'center',
+
+                }]}>
+
+                    <TextInput
+
+                        style={{ flex: 1 }}
+                        placeholder="Confirm your password"
+                        placeholderTextColor="#999"
+                        value={confirmPassword}
+                        onChangeText={setConfirmPassword}
+                        secureTextEntry={!showConfirmPassword}
+                        returnKeyType="next"
+
+                    />
+                    <TouchableOpacity
+                        onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+
+                    >
+                        <Image
+                            source={
+                                showPassword
+                                    ? require('../../asset/eye_open.png')
+                                    : require('../../asset/eye_close.png')
+                            }
+                            style={{
+                                width: 20,
+                                height: 20,
+                                resizeMode: 'contain',
+                                tintColor: COLORS.textLight,
+                                marginTop: 10
+                            }}
+                        />
+                    </TouchableOpacity>
+                </View>
+                {confirmPassword.length > 0 && password.length > 0 && (
+                    <Text style={[
+                        styles.matchText,
+                        password === confirmPassword ? { color: COLORS.success } : { color: COLORS.red }
+                    ]}>
+                        {password === confirmPassword ? '✅ Passwords match' : '❌ Passwords do not match'}
+                    </Text>
+                )}
+
+            </View>
+
+
 
             <TouchableOpacity
                 style={styles.primaryButton}
@@ -666,7 +1138,7 @@ const SignupScreen = ({ navigation }) => {
 
     const renderLocationStep = () => (
         <Animated.View style={[styles.stepContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-            <View style={styles.stepHeader}>
+            {/* <View style={styles.stepHeader}>
                 <View style={styles.stepIconContainer}>
 
                     <Image
@@ -706,21 +1178,101 @@ const SignupScreen = ({ navigation }) => {
                         onChangeText={setLocation}
                     />
                 </View>
+            </View> */}
+
+
+            <View style={styles.inputCard}>
+                <View style={styles.locationLabelRow}>
+                    <Text style={styles.inputLabel}>Current Location</Text>
+
+                    {isFetchingLocation && (
+                        <ActivityIndicator
+                            size="small"
+                            color="#FF8C00"
+                        />
+                    )}
+                </View>
+
+                <View style={styles.locationInputWrapper}>
+                    <Image
+                        source={require('../../asset/location-outline.png')}
+                        style={{
+                            width: 24,
+                            height: 24,
+                            tintColor: "#FF8C00",
+                        }}
+                    />
+
+                    <TextInput
+                        style={styles.locationInput}
+                        placeholder="Fetching your current location..."
+                        placeholderTextColor="#999"
+                        value={location}
+                        onChangeText={setLocation}
+                        multiline
+                    />
+                </View>
+
+                <TouchableOpacity
+                    style={styles.useCurrentLocationButton}
+                    onPress={fetchCurrentLocation}
+                    disabled={isFetchingLocation}
+                >
+                    <Image
+                        source={require('../../asset/location-outline.png')}
+                        style={{
+                            width: 18,
+                            height: 18,
+                            tintColor: "#FF8C00",
+                        }}
+                    />
+
+                    <Text style={styles.useCurrentLocationText}>
+                        {isFetchingLocation
+                            ? 'Getting Location...'
+                            : 'Use Current Location'}
+                    </Text>
+                </TouchableOpacity>
             </View>
 
-            <View style={styles.mapPlaceholder}>
-
-                <Image
-                    source={require('../../asset/map-outline.png')}
-                    style={{
-                        width: 64,
-                        height: 64,
-
-
-                    }}
-                />
-                <Text style={styles.mapPlaceholderText}>Map will appear here</Text>
-                <Text style={styles.mapPlaceholderSubtext}>Pin will be set automatically</Text>
+            <View style={styles.mapContainer}>
+                {latitude && longitude ? (
+                    <MapView
+                        style={styles.map}
+                        initialRegion={{
+                            latitude: latitude,
+                            longitude: longitude,
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                        }}
+                        region={{
+                            latitude: latitude,
+                            longitude: longitude,
+                            latitudeDelta: 0.005,
+                            longitudeDelta: 0.005,
+                        }}
+                        showsUserLocation={true}
+                        showsMyLocationButton={true}
+                        zoomEnabled={true}
+                        scrollEnabled={true}
+                    >
+                        <Marker
+                            coordinate={{
+                                latitude: latitude,
+                                longitude: longitude,
+                            }}
+                            title="Your Location"
+                            description={location}
+                        />
+                    </MapView>
+                ) : (
+                    <View style={styles.mapLoadingContainer}>
+                        <ActivityIndicator size="large" color="#FF8C00" />
+                        <Text style={styles.mapPlaceholderText}>
+                            Fetching your location...
+                        </Text>
+                    </View>
+                )}
             </View>
 
             {location && (
@@ -749,18 +1301,323 @@ const SignupScreen = ({ navigation }) => {
         </Animated.View>
     );
 
+    const toggleDocument = (docId) => {
+        if (selectedDocuments.includes(docId)) {
+            setSelectedDocuments(selectedDocuments.filter(id => id !== docId));
+            const newUploads = { ...uploadedFiles };
+            delete newUploads[docId];
+            setUploadedFiles(newUploads);
+        } else {
+            setSelectedDocuments([...selectedDocuments, docId]);
+            setUploadedFiles({
+                ...uploadedFiles,
+                [docId]: {
+                    name: `${docId}_document.pdf`,
+                    size: '2.4 MB',
+                    uploaded: false,
+                    referenceNumber: ''
+                }
+            });
+        }
+    };
+
+
+    const openUploadModal = (docId) => {
+        const refNumber = uploadedFiles[docId]?.referenceNumber || '';
+        if (!refNumber.trim()) {
+            Alert.alert('Reference Number Required', 'Please enter the reference number first');
+            return;
+        }
+        setSelectedDocId(docId);
+        setShowUploadModal(true);
+        setUploadProgress(0);
+    };
+
+    // const handleCamera = () => {
+    //     Alert.alert(
+    //         'Camera',
+    //         'Opening camera to capture document...',
+    //         [
+    //             { text: 'Cancel', style: 'cancel' },
+    //             {
+    //                 text: 'Capture',
+    //                 onPress: () => {
+    //                     // Simulate upload progress
+    //                     simulateUploadWithProgress(selectedDocId);
+    //                 }
+    //             }
+    //         ]
+    //     );
+    // };
+
+    const handleCamera = async () => {
+        try {
+            // Request camera permission on Android
+            if (Platform.OS === 'android') {
+                const granted = await PermissionsAndroid.request(
+                    PermissionsAndroid.PERMISSIONS.CAMERA,
+                    {
+                        title: 'Camera Permission',
+                        message: 'HomeHelp Partner needs camera access to capture your document.',
+                        buttonPositive: 'Allow',
+                        buttonNegative: 'Cancel',
+                    }
+                );
+
+                if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                    Alert.alert(
+                        'Permission Required',
+                        'Camera permission is required to capture the document.'
+                    );
+                    return;
+                }
+            }
+
+            const result = await launchCamera({
+                mediaType: 'photo',
+                cameraType: 'back',
+                quality: 0.8,
+                saveToPhotos: false,
+            });
+
+            console.log('Camera result:', result);
+
+            if (result.didCancel) {
+                console.log('User cancelled camera');
+                return;
+            }
+
+            if (result.errorCode) {
+                console.log('Camera error:', result.errorCode, result.errorMessage);
+
+                Alert.alert(
+                    'Camera Error',
+                    result.errorMessage || 'Unable to open camera.'
+                );
+                return;
+            }
+
+            const asset = result.assets?.[0];
+
+            if (!asset?.uri) {
+                Alert.alert('Error', 'Unable to capture the document.');
+                return;
+            }
+
+            console.log('Captured image:', asset);
+
+            // Store captured image
+            setUploadedFiles(prev => ({
+                ...prev,
+                [selectedDocId]: {
+                    ...prev[selectedDocId],
+                    uploaded: true,
+                    fileName: asset.fileName || `document_${Date.now()}.jpg`,
+                    uri: asset.uri,
+                    type: asset.type || 'image/jpeg',
+                    size: asset.fileSize || 0,
+                },
+            }));
+
+            setShowUploadModal(false);
+
+            Alert.alert(
+                'Success',
+                'Document photo captured successfully!'
+            );
+
+        } catch (error) {
+            console.log('Camera exception:', error);
+
+            Alert.alert(
+                'Camera Error',
+                'Unable to open the camera. Please try again.'
+            );
+        }
+    };
+
+    const handleAttach = () => {
+        Alert.alert(
+            'Attach File',
+            'Choose file from storage',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Choose File',
+                    onPress: () => {
+                        // Simulate upload progress
+                        simulateUploadWithProgress(selectedDocId);
+                    }
+                }
+            ]
+        );
+    };
+
+
+    const handleAttachImage = async () => {
+    const result = await launchImageLibrary({
+        mediaType: 'photo',
+        selectionLimit: 1,
+        quality: 0.8,
+    });
+
+    if (result.didCancel) {
+        return;
+    }
+
+    if (result.errorCode) {
+        Alert.alert(
+            'Gallery Error',
+            result.errorMessage || 'Unable to open gallery'
+        );
+        return;
+    }
+
+    const file = result.assets?.[0];
+
+    if (!file?.uri) {
+        return;
+    }
+
+    setUploadedFiles(prev => ({
+        ...prev,
+        [selectedDocId]: {
+            ...prev[selectedDocId],
+            uploaded: true,
+            fileName: file.fileName || `document_${Date.now()}.jpg`,
+            uri: file.uri,
+            type: file.type || 'image/jpeg',
+            size: file.fileSize || 0,
+        },
+    }));
+
+    setShowUploadModal(false);
+};
+
+
+
+    const simulateUploadWithProgress = (docId) => {
+        setUploadProgress(0);
+        const interval = setInterval(() => {
+            setUploadProgress(prev => {
+                if (prev >= 100) {
+                    clearInterval(interval);
+                    // Complete upload
+                    setUploadedFiles({
+                        ...uploadedFiles,
+                        [docId]: {
+                            ...uploadedFiles[docId],
+                            uploaded: true,
+                            fileName: `document_${Date.now()}.jpg`,
+                        }
+                    });
+                    setShowUploadModal(false);
+                    Alert.alert('Success', 'Document uploaded successfully!');
+                    return 100;
+                }
+                return prev + 10;
+            });
+        }, 200);
+    };
+
+    const renderUploadModal = () => (
+        <Modal
+            transparent={true}
+            visible={showUploadModal}
+            animationType="slide"
+            onRequestClose={() => setShowUploadModal(false)}
+        >
+            <TouchableWithoutFeedback onPress={() => setShowUploadModal(false)}>
+                <View style={styles.modalOverlay}>
+                    <TouchableWithoutFeedback>
+                        <Animated.View style={styles.modalContent}>
+                            <View style={styles.modalHandle} />
+
+                            <Text style={styles.modalTitle}>Upload Document</Text>
+                            <Text style={styles.modalSubtitle}>
+                                Choose how to upload your document
+                            </Text>
+
+                            {/* Upload Progress */}
+                            {uploadProgress > 0 && uploadProgress < 100 && (
+                                <View style={styles.progressContainer}>
+                                    <View style={styles.progressBar}>
+                                        <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+                                    </View>
+                                    <Text style={styles.progressText}>{uploadProgress}%</Text>
+                                </View>
+                            )}
+
+                            <View style={styles.modalOptions}>
+                                {/* Camera Option */}
+                                <TouchableOpacity
+                                    style={styles.modalOption}
+                                    onPress={handleCamera}
+                                    disabled={uploadProgress > 0 && uploadProgress < 100}
+                                >
+                                    <View style={[styles.modalOptionIcon, { backgroundColor: '#FF8C0015' }]}>
+                                        <Image
+                                            source={require('../../asset/camera.png')}
+                                            style={{
+                                                width: 32,
+                                                height: 32,
+                                                tintColor: '#FF8C00',
+                                                resizeMode: 'contain',
+                                            }}
+                                        />
+                                    </View>
+                                    <Text style={styles.modalOptionTitle}>Camera</Text>
+                                    <Text style={styles.modalOptionDesc}>Take a photo with your camera</Text>
+                                </TouchableOpacity>
+
+                                {/* Attach Option */}
+                                <TouchableOpacity
+                                    style={styles.modalOption}
+                                    onPress={handleAttachImage}
+                                    disabled={uploadProgress > 0 && uploadProgress < 100}
+                                >
+                                    <View style={[styles.modalOptionIcon, { backgroundColor: '#4CAF5015' }]}>
+                                        <Image
+                                            source={require('../../asset/attach.png')}
+                                            style={{
+                                                width: 32,
+                                                height: 32,
+                                                tintColor: '#4CAF50',
+                                                resizeMode: 'contain',
+                                            }}
+                                        />
+                                    </View>
+                                    <Text style={styles.modalOptionTitle}>Attach</Text>
+                                    <Text style={styles.modalOptionDesc}>Choose from gallery or files</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.modalCancelButton}
+                                onPress={() => setShowUploadModal(false)}
+                                disabled={uploadProgress > 0 && uploadProgress < 100}
+                            >
+                                <Text style={styles.modalCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                        </Animated.View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
+
+
+
     const renderDocumentsStep = () => (
         <Animated.View style={[styles.stepContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
             <View style={styles.stepHeader}>
                 <View style={styles.stepIconContainer}>
-
                     <Image
                         source={require('../../asset/cloud-upload.png')}
                         style={{
                             width: 28,
                             height: 28,
                             tintColor: "#FF8C00",
-
                         }}
                     />
                 </View>
@@ -786,31 +1643,28 @@ const SignupScreen = ({ navigation }) => {
                                     isUploaded && styles.documentCardUploaded,
                                 ]}
                                 onPress={() => toggleDocument(doc.id)}
+                                activeOpacity={0.8}
                             >
                                 <View style={styles.documentCardHeader}>
                                     <View style={styles.documentIconContainer}>
-                                       
-
                                         <Image
                                             source={doc.image}
                                             style={{
                                                 width: 24,
                                                 height: 24,
-                                                tintColor: isSelected === doc.id ? '#FF8C00' : '#666',
+                                                tintColor: isSelected ? '#FF8C00' : '#666',
                                                 resizeMode: 'contain',
                                             }}
                                         />
                                     </View>
                                     {isUploaded && (
                                         <View style={styles.uploadedBadge}>
-
                                             <Image
                                                 source={require('../../asset/check-mark.png')}
                                                 style={{
                                                     width: 16,
                                                     height: 16,
                                                     tintColor: "#4CAF50",
-
                                                 }}
                                             />
                                         </View>
@@ -825,27 +1679,62 @@ const SignupScreen = ({ navigation }) => {
                                 <Text style={styles.documentCardDescription}>{doc.description}</Text>
 
                                 {isSelected && (
-                                    <TouchableOpacity
-                                        style={styles.uploadButton}
-                                        onPress={(e) => {
-                                            e.stopPropagation();
-                                            simulateUpload(doc.id);
-                                        }}
-                                    >
+                                    <>
+                                        {/* Reference Number Input */}
+                                        <View style={styles.referenceInputContainer}>
+                                            <Text style={styles.referenceInputLabel}>Reference Number</Text>
+                                            <TextInput
+                                                style={styles.referenceInput}
+                                                placeholder={`Enter ${doc.label} number`}
+                                                placeholderTextColor="#999"
+                                                value={uploadedFiles[doc.id]?.referenceNumber || ''}
+                                                onChangeText={(text) => {
+                                                    setUploadedFiles({
+                                                        ...uploadedFiles,
+                                                        [doc.id]: {
+                                                            ...uploadedFiles[doc.id],
+                                                            referenceNumber: text,
+                                                        }
+                                                    });
+                                                }}
+                                                keyboardType="default"
+                                                autoCapitalize="characters"
+                                            />
+                                        </View>
 
-                                        <Image
-                                            source={require('../../asset/cloud-upload.png')}
-                                            style={{
-                                                width: 16,
-                                                height: 16,
-                                                tintColor: "#FFFFFF",
-
+                                        {/* Upload Button - Opens Modal */}
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.uploadButton,
+                                                isUploaded && styles.uploadButtonUploaded
+                                            ]}
+                                            onPress={() => {
+                                                if (isUploaded) {
+                                                    Alert.alert('Already Uploaded', 'This document has already been uploaded.');
+                                                    return;
+                                                }
+                                                openUploadModal(doc.id);
                                             }}
-                                        />
-                                        <Text style={styles.uploadButtonText}>
-                                            {isUploaded ? 'Uploaded ✓' : 'Upload File'}
-                                        </Text>
-                                    </TouchableOpacity>
+                                        >
+                                            <Image
+                                                source={require('../../asset/cloud-upload.png')}
+                                                style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    tintColor: "#FFFFFF",
+                                                }}
+                                            />
+                                            <Text style={styles.uploadButtonText}>
+                                                {isUploaded ? 'Uploaded ✓' : 'Upload File'}
+                                            </Text>
+                                        </TouchableOpacity>
+
+                                        {isUploaded && uploadedFiles[doc.id]?.referenceNumber && (
+                                            <Text style={styles.uploadedRefText}>
+                                                Ref: {uploadedFiles[doc.id].referenceNumber}
+                                            </Text>
+                                        )}
+                                    </>
                                 )}
                             </TouchableOpacity>
                         );
@@ -853,7 +1742,7 @@ const SignupScreen = ({ navigation }) => {
                 </View>
                 <Text style={styles.documentHelperText}>
                     {selectedDocuments.length > 0
-                        ? `${selectedDocuments.length} document(s) selected. Tap "Upload File" to upload each document.`
+                        ? `${selectedDocuments.length} document(s) selected. Enter reference number and tap "Upload File".`
                         : 'Select a document to upload'}
                 </Text>
             </View>
@@ -865,8 +1754,13 @@ const SignupScreen = ({ navigation }) => {
             >
                 <Text style={styles.primaryButtonText}>Continue →</Text>
             </TouchableOpacity>
+
+            {/* Upload Modal */}
+            {renderUploadModal()}
         </Animated.View>
     );
+
+
 
     const renderPinStep = () => (
         <Animated.View style={[styles.stepContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -998,7 +1892,7 @@ const SignupScreen = ({ navigation }) => {
                 {/* Header with App Title & Earning Boost */}
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                        
+
                         <Image
                             source={require('../../asset/arrow-back.png')}
                             style={{
@@ -1158,7 +2052,7 @@ const styles = StyleSheet.create({
         marginTop: 6,
         fontWeight: '500',
         letterSpacing: 0.2,
-        
+
     },
     stepIndicatorLabelActive: {
         color: '#FF8C00',
@@ -1651,6 +2545,226 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#666',
         marginBottom: 2,
+    },
+
+    locationLabelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+
+    mapContainer: {
+        height: 220,
+        borderRadius: 16,
+        overflow: 'hidden',
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        marginVertical: 12,
+        backgroundColor: '#F8F9FA',
+    },
+
+    map: {
+        width: '100%',
+        height: '100%',
+    },
+
+    mapLoadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    useCurrentLocationButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 10,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: '#FFF8F3',
+        borderWidth: 1,
+        borderColor: '#FFE0CC',
+        gap: 6,
+    },
+
+    useCurrentLocationText: {
+        color: '#FF8C00',
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    inputLabelContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 6,
+    },
+    inputRequired: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#E17055',
+        marginLeft: 4,
+    },
+    uploadButtonUploaded: {
+        backgroundColor: '#4CAF50',
+    },
+
+    // Modal Styles
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: 34,
+    },
+    modalHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#E0E0E0',
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    modalTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    modalSubtitle: {
+        fontSize: 14,
+        color: '#666666',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    modalOptions: {
+        flexDirection: 'row',
+        gap: 16,
+        marginBottom: 20,
+    },
+    modalOption: {
+        flex: 1,
+        backgroundColor: '#F8F9FA',
+        borderRadius: 14,
+        padding: 20,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    modalOptionIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    modalOptionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1A1A1A',
+        marginBottom: 2,
+    },
+    modalOptionDesc: {
+        fontSize: 12,
+        color: '#999',
+        textAlign: 'center',
+    },
+    modalCancelButton: {
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        backgroundColor: '#F8F9FA',
+    },
+    modalCancelText: {
+        fontSize: 15,
+        fontWeight: '500',
+        color: '#666',
+    },
+    // Progress Styles
+    progressContainer: {
+        marginBottom: 16,
+    },
+    progressBar: {
+        height: 6,
+        backgroundColor: '#E8E8E8',
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    progressFill: {
+        height: '100%',
+        backgroundColor: '#FF8C00',
+        borderRadius: 3,
+    },
+    progressText: {
+        fontSize: 12,
+        color: '#666',
+        textAlign: 'center',
+        marginTop: 4,
+    },
+    // Reference Input Styles
+    referenceInputContainer: {
+        width: '100%',
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    referenceInputLabel: {
+        fontSize: 11,
+        color: '#666',
+        fontWeight: '500',
+        marginBottom: 4,
+    },
+    referenceInput: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        fontSize: 13,
+        color: '#1A1A1A',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        width: '100%',
+    },
+    uploadedRefText: {
+        fontSize: 10,
+        color: '#4CAF50',
+        fontWeight: '500',
+        marginTop: 4,
+    },
+    referenceInputContainer: {
+        width: '100%',
+        marginTop: 8,
+        marginBottom: 8,
+    },
+    referenceInputLabel: {
+        fontSize: 11,
+        color: '#666',
+        fontWeight: '500',
+        marginBottom: 4,
+    },
+    referenceInput: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 8,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        fontSize: 13,
+        color: '#1A1A1A',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        width: '100%',
+    },
+    uploadedRefText: {
+        fontSize: 10,
+        color: '#4CAF50',
+        fontWeight: '500',
+        marginTop: 4,
     },
 });
 
