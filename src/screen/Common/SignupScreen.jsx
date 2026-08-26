@@ -322,7 +322,7 @@ const SignupScreen = ({ navigation, route }) => {
             image: require('../../asset/cloud-upload.png'),
             label: 'Documents',
         },
-       
+
     ];
 
     useEffect(() => {
@@ -607,7 +607,7 @@ const SignupScreen = ({ navigation, route }) => {
             return;
         }
 
-         Alert.alert('Success!', 'Your account has been created successfully!', [
+        Alert.alert('Success!', 'Your account has been created successfully!', [
             { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
         ]);
     };
@@ -1556,6 +1556,43 @@ const SignupScreen = ({ navigation, route }) => {
     };
 
 
+    const validateDocumentNumber = (documentType, value) => {
+        const documentNo = value.trim().toUpperCase();
+
+        switch (documentType) {
+
+            case 'PANCard':
+                return {
+                    valid: /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(documentNo),
+                    message: 'Please enter a valid PAN number. Example: ABCDE1234F',
+                };
+
+            case 'AadhaarCard':
+                return {
+                    valid: /^\d{12}$/.test(documentNo),
+                    message: 'Aadhaar number must contain exactly 12 digits.',
+                };
+
+            case 'Passport':
+                return {
+                    valid: /^[A-Z][0-9]{7}$/.test(documentNo),
+                    message: 'Please enter a valid passport number. Example: A1234567',
+                };
+
+            case 'DrivingLicense':
+                return {
+                    valid: documentNo.length >= 15,
+                    message: 'Please enter a valid Driving License number.',
+                };
+
+            default:
+                return {
+                    valid: documentNo.length > 0,
+                    message: 'Please enter a valid document number.',
+                };
+        }
+    };
+
     const uploadDocumentToApi = async (docId, file) => {
         try {
             const documentOption = documentOptions.find(
@@ -1567,7 +1604,34 @@ const SignupScreen = ({ navigation, route }) => {
                 return false;
             }
 
+
+
             const documentData = uploadedFiles[docId];
+
+            const documentNo = documentData?.referenceNumber
+                ?.trim()
+                .toUpperCase();
+
+            if (!documentNo) {
+                Alert.alert(
+                    'Reference Number Required',
+                    `Please enter the ${documentOption.label} number.`
+                );
+                return false;
+            }
+
+            const validation = validateDocumentNumber(
+                documentOption.documentType,
+                documentNo
+            );
+
+            if (!validation.valid) {
+                Alert.alert(
+                    'Invalid Document Number',
+                    validation.message
+                );
+                return false;
+            }
 
             if (!documentData?.referenceNumber?.trim()) {
                 Alert.alert(
@@ -1929,11 +1993,10 @@ const SignupScreen = ({ navigation, route }) => {
                                                         ...prev,
                                                         [doc.id]: {
                                                             ...prev[doc.id],
-                                                            referenceNumber: text,
+                                                            referenceNumber: text.toUpperCase(),
                                                         },
                                                     }));
                                                 }}
-                                                keyboardType="default"
                                                 autoCapitalize="characters"
                                             />
                                         </View>
@@ -2012,7 +2075,7 @@ const SignupScreen = ({ navigation, route }) => {
                 onPress={handleCompleteDocuments}
                 disabled={selectedDocuments.length === 0}
             >
-                 <Text style={styles.primaryButtonText}>Create Account →</Text>
+                <Text style={styles.primaryButtonText}>Create Account →</Text>
             </TouchableOpacity>
 
             {/* Upload Modal */}
