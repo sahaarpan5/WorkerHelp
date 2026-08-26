@@ -38,7 +38,7 @@ const SignupScreen = ({ navigation, route }) => {
     const [mobileVerified, setMobileVerified] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState([]);
-    const totalSteps = 5;
+    const totalSteps = 4;
 
     // Step 1: Phone & OTP
 
@@ -112,27 +112,47 @@ const SignupScreen = ({ navigation, route }) => {
     useEffect(() => {
         const mobileNo = route.params?.mobileNo;
         const verified = route.params?.mobileVerified;
-        const token = route.params?.token
-
+        const routeToken = route.params?.token;
+        const isRegistered = route.params?.isRegistered;
 
         console.log('Mobile No:', mobileNo);
         console.log('Mobile Verified:', verified);
-        console.log('token:', token);
+        console.log('Token:', routeToken);
+        console.log('Is Registered:', isRegistered);
 
         if (mobileNo) {
             setPhoneNumber(mobileNo);
         }
-        if (token) {
-            setToken(token);
+
+        if (routeToken) {
+            setToken(routeToken);
         }
 
+        setMobileVerified(verified === true);
 
-        setMobileVerified(verified);
-        if (verified) {
-            markStepComplete(0);
-            goToNextStep();
+        // Case 1:
+        // Already registered + mobile verified
+        // → Open Documents
+        if (verified === true && isRegistered === true) {
+            setCompletedSteps([0, 1, 2]);
+            setCurrentStep(3);
+            return;
         }
 
+        // Case 2:
+        // Not registered + mobile verified
+        // → Open Personal Details
+        if (verified === true && isRegistered === false) {
+            setCompletedSteps([0]);
+            setCurrentStep(1);
+            return;
+        }
+
+        // Case 3:
+        // All other cases
+        // → Open first step
+        setCompletedSteps([]);
+        setCurrentStep(0);
 
     }, [route.params]);
 
@@ -687,13 +707,13 @@ const SignupScreen = ({ navigation, route }) => {
                                         ]} />
                                     )}
                                 </View>
-                                <Text style={[
+                                {/* <Text style={[
                                     styles.stepIndicatorLabel,
                                     isActive && styles.stepIndicatorLabelActive,
                                     isCompleted && styles.stepIndicatorLabelCompleted,
                                 ]}>
                                     {step.label}
-                                </Text>
+                                </Text> */}
                             </View>
                         );
                     })}
@@ -928,7 +948,11 @@ const SignupScreen = ({ navigation, route }) => {
 
             <View style={styles.rowContainer}>
                 <View style={[styles.inputCard, { flex: 1, marginRight: 8 }]}>
-                    <Text style={styles.inputLabel}>First Name</Text>
+                    {/* <Text style={styles.inputLabel}>First Name</Text> */}
+                    <View style={styles.inputLabelContainer}>
+                        <Text style={styles.inputLabel}>First Name</Text>
+                        <Text style={styles.inputRequired}>*</Text>
+                    </View>
                     <TextInput
                         style={styles.textInput}
                         placeholder="First name"
@@ -938,7 +962,11 @@ const SignupScreen = ({ navigation, route }) => {
                     />
                 </View>
                 <View style={[styles.inputCard, { flex: 1, marginLeft: 8 }]}>
-                    <Text style={styles.inputLabel}>Last Name</Text>
+
+                    <View style={styles.inputLabelContainer}>
+                        <Text style={styles.inputLabel}>Last Name</Text>
+                        <Text style={styles.inputRequired}>*</Text>
+                    </View>
                     <TextInput
                         style={styles.textInput}
                         placeholder="Last name"
@@ -950,7 +978,11 @@ const SignupScreen = ({ navigation, route }) => {
             </View>
 
             <View style={styles.inputCard}>
-                <Text style={styles.inputLabel}>Email ID</Text>
+
+                <View style={styles.inputLabelContainer}>
+                    <Text style={styles.inputLabel}>Email ID</Text>
+                    <Text style={styles.inputRequired}>*</Text>
+                </View>
                 <View style={styles.cityContainer}>
                     <TextInput
                         style={[styles.textInput]}
@@ -967,7 +999,11 @@ const SignupScreen = ({ navigation, route }) => {
 
 
             <View style={styles.inputCard}>
-                <Text style={styles.inputLabel}>Gender</Text>
+
+                <View style={styles.inputLabelContainer}>
+                    <Text style={styles.inputLabel}>Gender</Text>
+                    <Text style={styles.inputRequired}>*</Text>
+                </View>
                 <View style={styles.genderContainer}>
                     {genderOptions.map((option) => (
                         <TouchableOpacity
@@ -999,7 +1035,11 @@ const SignupScreen = ({ navigation, route }) => {
             </View>
 
             <View style={styles.inputCard}>
-                <Text style={styles.inputLabel}>Date of Birth</Text>
+
+                <View style={styles.inputLabelContainer}>
+                    <Text style={styles.inputLabel}>Date of Birth</Text>
+                    <Text style={styles.inputRequired}>*</Text>
+                </View>
                 <TextInput
                     style={styles.textInput}
                     placeholder="DD/MM/YYYY"
@@ -2391,6 +2431,7 @@ const styles = StyleSheet.create({
         marginTop: 6,
         fontWeight: '500',
         letterSpacing: 0.2,
+        marginRight: 30
 
     },
     stepIndicatorLabelActive: {
@@ -2941,6 +2982,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#E17055',
         marginLeft: 4,
+        bottom: 2
     },
     uploadButtonUploaded: {
         backgroundColor: '#4CAF50',
