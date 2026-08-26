@@ -26,7 +26,7 @@ import MapView, { Marker } from 'react-native-maps';
 import axios from 'axios';
 import API from '../../util/API';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { launchCamera ,launchImageLibrary} from 'react-native-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 const { width, height } = Dimensions.get('window');
 
 
@@ -62,6 +62,7 @@ const SignupScreen = ({ navigation, route }) => {
     // Step 4: Documents Upload
     const [selectedDocuments, setSelectedDocuments] = useState([]);
     const [uploadedFiles, setUploadedFiles] = useState({});
+    const [uploadingDocument, setUploadingDocument] = useState(null);
 
     // Step 5: PIN Setup
     const [pin, setPin] = useState(['', '', '', '']);
@@ -276,18 +277,21 @@ const SignupScreen = ({ navigation, route }) => {
         {
             id: 'aadhar',
             label: 'Aadhar Card',
+            documentType: 'AadhaarCard',
             image: require('../../asset/aadhaar.png'),
             description: 'Government ID proof',
         },
         {
             id: 'passport',
             label: 'Passport',
+            documentType: 'Passport',
             image: require('../../asset/passport.png'),
             description: 'International travel document',
         },
         {
             id: 'pan',
             label: 'PAN Card',
+            documentType: 'PANCard',
             image: require('../../asset/pan.png'),
             description: 'Tax identification number',
         },
@@ -295,6 +299,7 @@ const SignupScreen = ({ navigation, route }) => {
         {
             id: 'driving',
             label: 'Driving License',
+            documentType: 'DrivingLicense',
             image: require('../../asset/driving-license.png'),
             description: "Driver's permit",
         },
@@ -317,10 +322,7 @@ const SignupScreen = ({ navigation, route }) => {
             image: require('../../asset/cloud-upload.png'),
             label: 'Documents',
         },
-        {
-            image: require('../../asset/shield.png'),
-            label: 'PIN',
-        },
+       
     ];
 
     useEffect(() => {
@@ -494,96 +496,96 @@ const SignupScreen = ({ navigation, route }) => {
             return;
         }
 
-        markStepComplete(2);
-        goToNextStep();
 
 
-        // try {
-        //     setIsLoading(true);
-
-
-
-        //     const requestBody = {
-        //         firstName: firstName.trim(),
-        //         lastName: lastName.trim(),
-        //         mobileNo: phoneNumber.trim(),
-        //         email: emailID.trim(),
-        //         gender: gender,
-        //         dob: formatDobForApi(dob),
-        //         password: password,
-        //         latitude: latitude,
-        //         longitude: longitude,
-
-        //     };
-
-        //     console.log('CREATE ACCOUNT REQUEST:', requestBody);
-
-        //     const response = await axios.post(
-        //         API.REGISTER_PARTNER,
-        //         requestBody,
-        //         {
-        //             headers: {
-        //                 'Content-Type': 'application/json',
-        //                 Authorization: `Bearer ${token}`,
-        //             },
-        //         }
-        //     );
-
-        //     console.log(
-        //         'CREATE ACCOUNT RESPONSE:',
-        //         response.data
-        //     );
-
-        //     if (response.data?.success === true) {
-
-        //         // Save new token
-        //         if (response.data?.token) {
-        //             await AsyncStorage.setItem(
-        //                 'token',
-        //                 response.data.token
-        //             );
-        //         }
-
-        //         // Save User ID
-
-
-        //         await AsyncStorage.setItem(
-        //             'customerMob',
-        //             String(phoneNumber)
-        //         );
+        try {
+            setIsLoading(true);
 
 
 
-        //         markStepComplete(2);
-        //         goToNextStep();
+            const requestBody = {
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                mobileNo: phoneNumber.trim(),
+                email: emailID.trim(),
+                gender: gender,
+                dob: formatDobForApi(dob),
+                password: password,
+                latitude: latitude,
+                longitude: longitude,
+
+            };
+
+            console.log('CREATE ACCOUNT REQUEST:', requestBody);
+
+            const response = await axios.post(
+                API.REGISTER_PARTNER,
+                requestBody,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            console.log(
+                'CREATE ACCOUNT RESPONSE:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+
+                // Save new token
+                if (response.data?.token) {
+                    await AsyncStorage.setItem(
+                        'token',
+                        response.data.token
+                    );
+
+                    setToken(response.data.token);
+                }
+
+                // Save User ID
+
+
+                await AsyncStorage.setItem(
+                    'customerMob',
+                    String(phoneNumber)
+                );
 
 
 
-        //     } else {
+                markStepComplete(2);
+                goToNextStep();
 
-        //         Alert.alert(
-        //             'Create Account Failed',
-        //             response.data?.message ||
-        //             'Unable to create account.'
-        //         );
-        //     }
 
-        // } catch (error) {
 
-        //     console.log(
-        //         'CREATE ACCOUNT ERROR:',
-        //         error?.response?.data || error?.message
-        //     );
+            } else {
 
-        //     Alert.alert(
-        //         'Create Account Failed',
-        //         error?.response?.data?.message ||
-        //         'Something went wrong. Please try again.'
-        //     );
+                Alert.alert(
+                    'Create Account Failed',
+                    response.data?.message ||
+                    'Unable to create account.'
+                );
+            }
 
-        // } finally {
-        //     setIsLoading(false);
-        // }
+        } catch (error) {
+
+            console.log(
+                'CREATE ACCOUNT ERROR:',
+                error?.response?.data || error?.message
+            );
+
+            Alert.alert(
+                'Create Account Failed',
+                error?.response?.data?.message ||
+                'Something went wrong. Please try again.'
+            );
+
+        } finally {
+            setIsLoading(false);
+        }
 
 
 
@@ -591,12 +593,23 @@ const SignupScreen = ({ navigation, route }) => {
     };
 
     const handleCompleteDocuments = () => {
-        if (selectedDocuments.length === 0) {
-            Alert.alert('No Documents', 'Please select and upload at least one document');
+        const hasUploadedDocument = Object.values(uploadedFiles).some(
+            document =>
+                document?.uploaded === true &&
+                document?.uploadSuccess === true
+        );
+
+        if (!hasUploadedDocument) {
+            Alert.alert(
+                'Document Required',
+                'Please upload at least one document before continuing.'
+            );
             return;
         }
-        markStepComplete(3);
-        goToNextStep();
+
+         Alert.alert('Success!', 'Your account has been created successfully!', [
+            { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
+        ]);
     };
 
     const handleCompleteSignup = () => {
@@ -1301,70 +1314,115 @@ const SignupScreen = ({ navigation, route }) => {
         </Animated.View>
     );
 
+    // const toggleDocument = (docId) => {
+    //     if (selectedDocuments.includes(docId)) {
+    //         setSelectedDocuments(selectedDocuments.filter(id => id !== docId));
+    //         const newUploads = { ...uploadedFiles };
+    //         delete newUploads[docId];
+    //         setUploadedFiles(newUploads);
+    //     } else {
+    //         setSelectedDocuments([...selectedDocuments, docId]);
+    //         setUploadedFiles({
+    //             ...uploadedFiles,
+    //             [docId]: {
+    //                 name: `${docId}_document.pdf`,
+    //                 size: '2.4 MB',
+    //                 uploaded: false,
+    //                 referenceNumber: ''
+    //             }
+    //         });
+    //     }
+    // };
+
     const toggleDocument = (docId) => {
+        const existingDocument = uploadedFiles[docId];
+
+        // Never allow an uploaded document to be deselected
+        if (existingDocument?.uploaded && existingDocument?.uploadSuccess) {
+            return;
+        }
+
         if (selectedDocuments.includes(docId)) {
-            setSelectedDocuments(selectedDocuments.filter(id => id !== docId));
-            const newUploads = { ...uploadedFiles };
-            delete newUploads[docId];
-            setUploadedFiles(newUploads);
-        } else {
-            setSelectedDocuments([...selectedDocuments, docId]);
-            setUploadedFiles({
-                ...uploadedFiles,
-                [docId]: {
-                    name: `${docId}_document.pdf`,
-                    size: '2.4 MB',
-                    uploaded: false,
-                    referenceNumber: ''
-                }
+            setSelectedDocuments(
+                selectedDocuments.filter(id => id !== docId)
+            );
+
+            setUploadedFiles(prev => {
+                const newUploads = { ...prev };
+                delete newUploads[docId];
+                return newUploads;
             });
+
+        } else {
+            setSelectedDocuments(prev => [...prev, docId]);
+
+            setUploadedFiles(prev => ({
+                ...prev,
+                [docId]: {
+                    uploaded: false,
+                    uploadSuccess: false,
+                    referenceNumber: '',
+                    fileName: '',
+                    uri: '',
+                    type: '',
+                    size: 0,
+                    partnerDocumentId: null,
+                    verificationStatus: '',
+                    filePath: '',
+                },
+            }));
         }
     };
 
 
     const openUploadModal = (docId) => {
-        const refNumber = uploadedFiles[docId]?.referenceNumber || '';
-        if (!refNumber.trim()) {
-            Alert.alert('Reference Number Required', 'Please enter the reference number first');
+        const document = uploadedFiles[docId];
+
+        // Already successfully uploaded
+        if (document?.uploaded && document?.uploadSuccess) {
+            Alert.alert(
+                'Document Already Uploaded',
+                'This document has already been uploaded successfully and cannot be changed.'
+            );
             return;
         }
-        setSelectedDocId(docId);
-        setShowUploadModal(true);
-        setUploadProgress(0);
-    };
 
-    // const handleCamera = () => {
-    //     Alert.alert(
-    //         'Camera',
-    //         'Opening camera to capture document...',
-    //         [
-    //             { text: 'Cancel', style: 'cancel' },
-    //             {
-    //                 text: 'Capture',
-    //                 onPress: () => {
-    //                     // Simulate upload progress
-    //                     simulateUploadWithProgress(selectedDocId);
-    //                 }
-    //             }
-    //         ]
-    //     );
-    // };
+        const refNumber = document?.referenceNumber || '';
+
+        if (!refNumber.trim()) {
+            Alert.alert(
+                'Reference Number Required',
+                'Please enter the reference number first.'
+            );
+            return;
+        }
+
+        setSelectedDocId(docId);
+        setUploadProgress(0);
+        setShowUploadModal(true);
+    };
 
     const handleCamera = async () => {
         try {
-            // Request camera permission on Android
+            if (!selectedDocId) {
+                return;
+            }
+
             if (Platform.OS === 'android') {
                 const granted = await PermissionsAndroid.request(
                     PermissionsAndroid.PERMISSIONS.CAMERA,
                     {
                         title: 'Camera Permission',
-                        message: 'HomeHelp Partner needs camera access to capture your document.',
+                        message:
+                            'HomeHelp Partner needs camera access to capture your document.',
                         buttonPositive: 'Allow',
                         buttonNegative: 'Cancel',
                     }
                 );
 
-                if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                if (
+                    granted !== PermissionsAndroid.RESULTS.GRANTED
+                ) {
                     Alert.alert(
                         'Permission Required',
                         'Camera permission is required to capture the document.'
@@ -1380,19 +1438,15 @@ const SignupScreen = ({ navigation, route }) => {
                 saveToPhotos: false,
             });
 
-            console.log('Camera result:', result);
-
             if (result.didCancel) {
-                console.log('User cancelled camera');
                 return;
             }
 
             if (result.errorCode) {
-                console.log('Camera error:', result.errorCode, result.errorMessage);
-
                 Alert.alert(
                     'Camera Error',
-                    result.errorMessage || 'Unable to open camera.'
+                    result.errorMessage ||
+                    'Unable to open camera.'
                 );
                 return;
             }
@@ -1400,99 +1454,266 @@ const SignupScreen = ({ navigation, route }) => {
             const asset = result.assets?.[0];
 
             if (!asset?.uri) {
-                Alert.alert('Error', 'Unable to capture the document.');
+                Alert.alert(
+                    'Error',
+                    'Unable to capture the document.'
+                );
                 return;
             }
 
-            console.log('Captured image:', asset);
+            const file = {
+                uri: asset.uri,
+                fileName:
+                    asset.fileName ||
+                    `document_${Date.now()}.jpg`,
+                type: asset.type || 'image/jpeg',
+                fileSize: asset.fileSize || 0,
+            };
 
-            // Store captured image
-            setUploadedFiles(prev => ({
-                ...prev,
-                [selectedDocId]: {
-                    ...prev[selectedDocId],
-                    uploaded: true,
-                    fileName: asset.fileName || `document_${Date.now()}.jpg`,
-                    uri: asset.uri,
-                    type: asset.type || 'image/jpeg',
-                    size: asset.fileSize || 0,
-                },
-            }));
-
-            setShowUploadModal(false);
-
-            Alert.alert(
-                'Success',
-                'Document photo captured successfully!'
+            await uploadDocumentToApi(
+                selectedDocId,
+                file
             );
 
         } catch (error) {
+
             console.log('Camera exception:', error);
 
             Alert.alert(
                 'Camera Error',
-                'Unable to open the camera. Please try again.'
+                'Unable to capture the document. Please try again.'
             );
         }
     };
 
-    const handleAttach = () => {
-        Alert.alert(
-            'Attach File',
-            'Choose file from storage',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Choose File',
-                    onPress: () => {
-                        // Simulate upload progress
-                        simulateUploadWithProgress(selectedDocId);
-                    }
-                }
-            ]
-        );
+
+    const handleAttachImage = async () => {
+        try {
+            if (!selectedDocId) {
+                return;
+            }
+            setUploadProgress(0);
+            setUploadingDocument(selectedDocId);
+
+            const result = await launchImageLibrary({
+                mediaType: 'photo',
+                selectionLimit: 1,
+                quality: 0.8,
+            });
+
+            if (result.didCancel) {
+                setUploadingDocument(null);
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Gallery Error',
+                    result.errorMessage ||
+                    'Unable to open gallery.'
+                );
+                return;
+            }
+
+            const asset = result.assets?.[0];
+
+            if (!asset?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to select the document.'
+                );
+                setUploadingDocument(null);
+                return;
+            }
+
+            const file = {
+                uri: asset.uri,
+                fileName:
+                    asset.fileName ||
+                    `document_${Date.now()}.jpg`,
+                type: asset.type || 'image/jpeg',
+                fileSize: asset.fileSize || 0,
+            };
+
+            await uploadDocumentToApi(
+                selectedDocId,
+                file
+            );
+
+        } catch (error) {
+            setUploadingDocument(null);
+
+            console.log(
+                'Gallery upload error:',
+                error
+            );
+
+            Alert.alert(
+                'Upload Error',
+                'Unable to upload the selected document.'
+            );
+        }
     };
 
 
-    const handleAttachImage = async () => {
-    const result = await launchImageLibrary({
-        mediaType: 'photo',
-        selectionLimit: 1,
-        quality: 0.8,
-    });
+    const uploadDocumentToApi = async (docId, file) => {
+        try {
+            const documentOption = documentOptions.find(
+                item => item.id === docId
+            );
 
-    if (result.didCancel) {
-        return;
-    }
+            if (!documentOption) {
+                Alert.alert('Error', 'Invalid document selected.');
+                return false;
+            }
 
-    if (result.errorCode) {
-        Alert.alert(
-            'Gallery Error',
-            result.errorMessage || 'Unable to open gallery'
-        );
-        return;
-    }
+            const documentData = uploadedFiles[docId];
 
-    const file = result.assets?.[0];
+            if (!documentData?.referenceNumber?.trim()) {
+                Alert.alert(
+                    'Reference Number Required',
+                    `Please enter the ${documentOption.label} number.`
+                );
+                return false;
+            }
 
-    if (!file?.uri) {
-        return;
-    }
+            if (!file?.uri) {
+                Alert.alert(
+                    'File Required',
+                    'Please select or capture a document.'
+                );
+                return false;
+            }
 
-    setUploadedFiles(prev => ({
-        ...prev,
-        [selectedDocId]: {
-            ...prev[selectedDocId],
-            uploaded: true,
-            fileName: file.fileName || `document_${Date.now()}.jpg`,
-            uri: file.uri,
-            type: file.type || 'image/jpeg',
-            size: file.fileSize || 0,
-        },
-    }));
+            setUploadingDocument(docId);
+            setUploadProgress(0);
 
-    setShowUploadModal(false);
-};
+            const formData = new FormData();
+
+            formData.append(
+                'DocumentType',
+                documentOption.documentType
+            );
+
+            formData.append(
+                'DocumentNo',
+                documentData.referenceNumber.trim()
+            );
+
+            formData.append('File', {
+                uri: file.uri,
+                name:
+                    file.fileName ||
+                    file.name ||
+                    `document_${Date.now()}.jpg`,
+                type: file.type || 'image/jpeg',
+            });
+
+            const response = await axios.post(
+                API.UPLOAD_PARTNER_DOCUMENT,
+                formData,
+                {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                        Authorization: `Bearer ${token}`,
+                    },
+                    onUploadProgress: progressEvent => {
+                        if (progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) /
+                                progressEvent.total
+                            );
+
+                            setUploadProgress(progress);
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Document upload response:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+                setUploadedFiles(prev => ({
+                    ...prev,
+                    [docId]: {
+                        ...prev[docId],
+                        uploaded: true,
+                        uploadSuccess: true,
+
+                        fileName:
+                            file.fileName ||
+                            file.name ||
+                            `document_${Date.now()}`,
+
+                        uri: file.uri,
+                        type: file.type || 'image/jpeg',
+                        size: file.fileSize || file.size || 0,
+
+                        partnerDocumentId:
+                            response.data.partnerDocumentId,
+
+                        documentType:
+                            response.data.documentType,
+
+                        documentNo:
+                            response.data.documentNo,
+
+                        verificationStatus:
+                            response.data.verificationStatus,
+
+                        filePath:
+                            response.data.filePath,
+                    },
+                }));
+
+                setUploadProgress(100);
+                setShowUploadModal(false);
+
+                Alert.alert(
+                    'Upload Successful',
+                    response.data.message ||
+                    'Document uploaded successfully.'
+                );
+
+                return true;
+            }
+
+            Alert.alert(
+                'Upload Failed',
+                response.data?.message ||
+                'Unable to upload document.'
+            );
+
+            return false;
+
+        } catch (error) {
+            console.log(
+                'Document upload error:',
+                error?.response?.data || error?.message
+            );
+
+            Alert.alert(
+                'Upload Failed',
+                error?.response?.data?.message ||
+                'Something went wrong while uploading the document.'
+            );
+
+            return false;
+
+        } finally {
+            setUploadingDocument(null);
+        }
+    };
+
+
+
+
+
+
+
 
 
 
@@ -1642,7 +1863,16 @@ const SignupScreen = ({ navigation, route }) => {
                                     isSelected && styles.documentCardActive,
                                     isUploaded && styles.documentCardUploaded,
                                 ]}
-                                onPress={() => toggleDocument(doc.id)}
+                                onPress={() => {
+                                    if (
+                                        uploadedFiles[doc.id]?.uploaded &&
+                                        uploadedFiles[doc.id]?.uploadSuccess
+                                    ) {
+                                        return;
+                                    }
+
+                                    toggleDocument(doc.id);
+                                }}
                                 activeOpacity={0.8}
                             >
                                 <View style={styles.documentCardHeader}>
@@ -1688,14 +1918,20 @@ const SignupScreen = ({ navigation, route }) => {
                                                 placeholder={`Enter ${doc.label} number`}
                                                 placeholderTextColor="#999"
                                                 value={uploadedFiles[doc.id]?.referenceNumber || ''}
+                                                editable={
+                                                    !(
+                                                        uploadedFiles[doc.id]?.uploaded &&
+                                                        uploadedFiles[doc.id]?.uploadSuccess
+                                                    )
+                                                }
                                                 onChangeText={(text) => {
-                                                    setUploadedFiles({
-                                                        ...uploadedFiles,
+                                                    setUploadedFiles(prev => ({
+                                                        ...prev,
                                                         [doc.id]: {
-                                                            ...uploadedFiles[doc.id],
+                                                            ...prev[doc.id],
                                                             referenceNumber: text,
-                                                        }
-                                                    });
+                                                        },
+                                                    }));
                                                 }}
                                                 keyboardType="default"
                                                 autoCapitalize="characters"
@@ -1706,13 +1942,21 @@ const SignupScreen = ({ navigation, route }) => {
                                         <TouchableOpacity
                                             style={[
                                                 styles.uploadButton,
-                                                isUploaded && styles.uploadButtonUploaded
+                                                isUploaded && styles.uploadButtonUploaded,
                                             ]}
+                                            disabled={
+                                                isUploaded ||
+                                                uploadingDocument === doc.id
+                                            }
                                             onPress={() => {
                                                 if (isUploaded) {
-                                                    Alert.alert('Already Uploaded', 'This document has already been uploaded.');
+                                                    Alert.alert(
+                                                        'Already Uploaded',
+                                                        'This document has already been uploaded successfully.'
+                                                    );
                                                     return;
                                                 }
+
                                                 openUploadModal(doc.id);
                                             }}
                                         >
@@ -1725,14 +1969,30 @@ const SignupScreen = ({ navigation, route }) => {
                                                 }}
                                             />
                                             <Text style={styles.uploadButtonText}>
-                                                {isUploaded ? 'Uploaded ✓' : 'Upload File'}
+                                                {uploadingDocument === doc.id
+                                                    ? 'Uploading...'
+                                                    : isUploaded
+                                                        ? 'Uploaded ✓'
+                                                        : 'Upload File'}
                                             </Text>
                                         </TouchableOpacity>
 
-                                        {isUploaded && uploadedFiles[doc.id]?.referenceNumber && (
-                                            <Text style={styles.uploadedRefText}>
-                                                Ref: {uploadedFiles[doc.id].referenceNumber}
-                                            </Text>
+                                        {isUploaded && (
+                                            <View style={{
+                                                marginTop: 6,
+                                                alignItems: 'center',
+                                            }}>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: '#4CAF50',
+                                                    fontWeight: '600',
+                                                }}>
+                                                    Verification: {
+                                                        uploadedFiles[doc.id]?.verificationStatus ||
+                                                        'Pending'
+                                                    }
+                                                </Text>
+                                            </View>
                                         )}
                                     </>
                                 )}
@@ -1752,7 +2012,7 @@ const SignupScreen = ({ navigation, route }) => {
                 onPress={handleCompleteDocuments}
                 disabled={selectedDocuments.length === 0}
             >
-                <Text style={styles.primaryButtonText}>Continue →</Text>
+                 <Text style={styles.primaryButtonText}>Create Account →</Text>
             </TouchableOpacity>
 
             {/* Upload Modal */}
