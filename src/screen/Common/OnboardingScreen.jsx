@@ -21,12 +21,14 @@ const OnboardingScreen = ({ navigation, route }) => {
      const [phoneNumber, setPhoneNumber] = useState('');
     const [token, setToken] = useState('');
     const [mobileVerified, setMobileVerified] = useState(false);
+     const [isRegistered, setisRegistered] = useState(false);
 
 
     useEffect(() => {
         const mobileNo = route.params?.mobileNo;
         const verified = route.params?.mobileVerified;
-        const token = route.params?.token
+        const token = route.params?.token;
+        const isRegistered = route.params?.isRegistered
 
 
         console.log('Mobile No:', mobileNo);
@@ -42,6 +44,7 @@ const OnboardingScreen = ({ navigation, route }) => {
 
 
         setMobileVerified(verified);
+        setisRegistered(isRegistered);
         
 
     }, [route.params]);
@@ -122,6 +125,7 @@ const OnboardingScreen = ({ navigation, route }) => {
                         mobileNo: phoneNumber,
                         mobileVerified: mobileVerified,
                         token: token,
+                        isRegistered:isRegistered
 
                     });
     };

@@ -119,7 +119,7 @@ const LoginScreen = ({ navigation }) => {
             return;
         }
 
-       
+
 
         try {
             setIsLoading(true);
@@ -165,7 +165,7 @@ const LoginScreen = ({ navigation }) => {
         }
     };
 
-   
+
 
     const handleOtpSubmit = async () => {
         const otpString = otp.join('');
@@ -178,7 +178,7 @@ const LoginScreen = ({ navigation }) => {
             return;
         }
 
-        
+
 
         try {
             setIsLoading(true);
@@ -193,7 +193,7 @@ const LoginScreen = ({ navigation }) => {
 
             if (response.data?.success === true) {
 
-                
+
 
                 // New customer → Signup
                 if (response.data?.isRegistered === false) {
@@ -202,6 +202,7 @@ const LoginScreen = ({ navigation }) => {
                         mobileNo: response.data?.uniqueMobileNo || phoneNumber,
                         mobileVerified: response.data?.mobileVerified,
                         token: response.data?.token,
+                        isRegistered:false
 
                     });
 
@@ -209,16 +210,67 @@ const LoginScreen = ({ navigation }) => {
                 }
                 // Existing customer → Dashboard
                 else if (response.data?.isRegistered === true) {
-                    await AsyncStorage.setItem(
-                        'customerMob',
-                        String(response.data?.uniqueMobileNo || phoneNumber)
-                    );
-                    await AsyncStorage.setItem(
-                        'token',
-                        response.data.token
-                    );
+                    const token = response.data?.token;
+                    const mobileNo =
+                        response.data?.uniqueMobileNo || phoneNumber;
+                    try {
+                        // Save login information
+                        await AsyncStorage.setItem(
+                            'customerMob',
+                            String(mobileNo)
+                        );
 
-                    navigation.replace('DashboardScreen');
+                        await AsyncStorage.setItem(
+                            'token',
+                            token
+                        );
+
+                        // Get partner documents
+                        const documentsResponse = await axios.get(
+                            API.PARTNER_DOCUMENTS,
+                            {
+                                headers: {
+                                    Authorization: `Bearer ${token}`,
+                                },
+                            }
+                        );
+
+                        console.log(
+                            'PARTNER DOCUMENTS RESPONSE:',
+                            documentsResponse.data
+                        );
+
+                        if (
+                            documentsResponse.data?.success === true &&
+                            Array.isArray(documentsResponse.data?.documents) &&
+                            documentsResponse.data.documents.length > 0
+                        ) {
+                            // Documents exist → Dashboard
+                            navigation.replace('DashboardScreen');
+
+                        } else {
+                            // No documents → Signup
+                            navigation.replace('SignupScreen', {
+                                mobileNo: mobileNo,
+                                isRegistered: response.data?.isRegistered,
+                                token: token,
+                                mobileVerified: response.data?.mobileVerified,
+                            });
+                        }
+
+                    } catch (error) {
+
+                        console.log(
+                            'PARTNER DOCUMENTS ERROR:',
+                            error?.response?.data || error?.message
+                        );
+
+                        Alert.alert(
+                            'Error',
+                            error?.response?.data?.message ||
+                            'Unable to retrieve partner documents. Please try again.'
+                        );
+                    }
                 }
 
             } else {
