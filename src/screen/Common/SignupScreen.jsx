@@ -277,7 +277,7 @@ const SignupScreen = ({ navigation, route }) => {
         {
             id: 'aadhar',
             label: 'Aadhar Card',
-            documentType: 'AadhaarCard',
+            documentType: 'Aadhaar Card',
             image: require('../../asset/aadhaar.png'),
             description: 'Government ID proof',
         },
@@ -291,15 +291,22 @@ const SignupScreen = ({ navigation, route }) => {
         {
             id: 'pan',
             label: 'PAN Card',
-            documentType: 'PANCard',
+            documentType: 'PAN Card',
             image: require('../../asset/pan.png'),
             description: 'Tax identification number',
+        },
+        {
+            id: 'passbook',
+            label: 'Bank Passbook',
+            documentType: 'Bank Passbook',
+            image: require('../../asset/book.png'),
+            description: 'Bank Passbook',
         },
 
         {
             id: 'driving',
             label: 'Driving License',
-            documentType: 'DrivingLicense',
+            documentType: 'Driving License',
             image: require('../../asset/driving-license.png'),
             description: "Driver's permit",
         },
@@ -593,16 +600,19 @@ const SignupScreen = ({ navigation, route }) => {
     };
 
     const handleCompleteDocuments = () => {
-        const hasUploadedDocument = Object.values(uploadedFiles).some(
+        const uploadedDocumentCount = Object.values(uploadedFiles).filter(
             document =>
                 document?.uploaded === true &&
                 document?.uploadSuccess === true
-        );
+        ).length;
 
-        if (!hasUploadedDocument) {
+        if (uploadedDocumentCount < 2) {
+            const remaining = 2 - uploadedDocumentCount;
+
             Alert.alert(
-                'Document Required',
-                'Please upload at least one document before continuing.'
+                'Documents Required',
+                `Please upload ${remaining} more document${remaining > 1 ? 's' : ''
+                } to continue.`
             );
             return;
         }
@@ -1561,13 +1571,13 @@ const SignupScreen = ({ navigation, route }) => {
 
         switch (documentType) {
 
-            case 'PANCard':
+            case 'PAN Card':
                 return {
                     valid: /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(documentNo),
                     message: 'Please enter a valid PAN number. Example: ABCDE1234F',
                 };
 
-            case 'AadhaarCard':
+            case 'Aadhaar Card':
                 return {
                     valid: /^\d{12}$/.test(documentNo),
                     message: 'Aadhaar number must contain exactly 12 digits.',
@@ -1579,9 +1589,15 @@ const SignupScreen = ({ navigation, route }) => {
                     message: 'Please enter a valid passport number. Example: A1234567',
                 };
 
-            case 'DrivingLicense':
+            case 'Bank Passbook':
                 return {
-                    valid: documentNo.length >= 15,
+                    valid: /^\d{9,18}$/.test(documentNo),
+                    message: 'Please enter a valid bank account number.',
+                };
+
+            case 'Driving License':
+                return {
+                    valid: /^[A-Z0-9-]{5,20}$/.test(documentNo),
                     message: 'Please enter a valid Driving License number.',
                 };
 
