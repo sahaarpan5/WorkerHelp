@@ -53,11 +53,15 @@ const SignupScreen = ({ navigation, route }) => {
     const [lastName, setLastName] = useState('');
     const [gender, setGender] = useState('');
     const [dob, setDob] = useState('');
+    const [showDobPicker, setShowDobPicker] = useState(false);
     const [city, setCity] = useState('');
     const [cities, setCities] = useState(['Mumbai', 'Delhi', 'Bangalore', 'Chennai', 'Hyderabad', 'Pune', 'Ahmedabad', 'Kolkata', 'Surat', 'Jaipur']);
 
     // Step 3: Location
     const [location, setLocation] = useState('');
+    const [locationSuggestions, setLocationSuggestions] = useState([]);
+    const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+    const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
 
     // Step 4: Documents Upload
     const [selectedDocuments, setSelectedDocuments] = useState([]);
@@ -89,6 +93,11 @@ const SignupScreen = ({ navigation, route }) => {
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [selectedDocId, setSelectedDocId] = useState(null);
     const [uploadProgress, setUploadProgress] = useState(0);
+
+    const GOOGLE_MAPS_API_KEY =
+        'AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g'
+
+    const searchTimeout = useRef(null);
 
     const COLORS = {
         gold: '#C9A84C',
@@ -157,12 +166,157 @@ const SignupScreen = ({ navigation, route }) => {
     }, [route.params]);
 
     useEffect(() => {
-        if (currentStep === 2) {
+        if (currentStep === 2 && !location) {
             fetchCurrentLocation();
         }
     }, [currentStep]);
 
 
+    const searchLocation = (text) => {
+        setLocation(text);
+
+        if (searchTimeout.current) {
+            clearTimeout(searchTimeout.current);
+        }
+
+        if (!text.trim() || text.trim().length < 3) {
+            setLocationSuggestions([]);
+            setShowLocationSuggestions(false);
+            return;
+        }
+
+        searchTimeout.current = setTimeout(() => {
+            searchGooglePlaces(text.trim());
+        }, 700);
+    };
+
+    const searchGooglePlaces = async (text) => {
+        try {
+            setIsSearchingLocation(true);
+
+            const response = await fetch(
+                `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+                    text
+                )}&components=country:in&key=${GOOGLE_MAPS_API_KEY}`
+            );
+
+            const data = await response.json();
+
+            if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+                console.log(
+                    'Google Places error:',
+                    data.status,
+                    data.error_message
+                );
+
+                setLocationSuggestions([]);
+                return;
+            }
+
+            setLocationSuggestions(
+                data.predictions || []
+            );
+
+            setShowLocationSuggestions(
+                data.predictions?.length > 0
+            );
+
+        } catch (error) {
+            console.log(
+                'Google Places search error:',
+                error
+            );
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const handleLocationSelect = async (item) => {
+        try {
+            setIsSearchingLocation(true);
+
+            const response = await fetch(
+                `https://maps.googleapis.com/maps/api/place/details/json` +
+                `?place_id=${item.place_id}` +
+                `&fields=formatted_address,geometry` +
+                `&key=${GOOGLE_MAPS_API_KEY}`
+            );
+
+            const data = await response.json();
+
+            console.log('Place Details:', data);
+
+            if (data.status !== 'OK') {
+                Alert.alert(
+                    'Location Error',
+                    data.error_message || 'Unable to get location details.'
+                );
+                return;
+            }
+
+            const result = data.result;
+
+            const selectedLatitude =
+                result.geometry.location.lat;
+
+            const selectedLongitude =
+                result.geometry.location.lng;
+
+            const address =
+                result.formatted_address ||
+                item.description;
+
+            // Address shown to user
+            setLocation(address);
+
+            // Coordinates stored for API
+            setLatitude(selectedLatitude);
+            setLongitude(selectedLongitude);
+
+            // Hide suggestions
+            setLocationSuggestions([]);
+            setShowLocationSuggestions(false);
+
+            console.log('Selected Location:', {
+                address,
+                latitude: selectedLatitude,
+                longitude: selectedLongitude,
+            });
+
+        } catch (error) {
+            console.log(
+                'Place details error:',
+                error
+            );
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const formatDobInput = (text) => {
+        // Remove anything except numbers
+        const numbers = text.replace(/\D/g, '');
+
+        let formatted = '';
+
+        if (numbers.length <= 2) {
+            formatted = numbers;
+        } else if (numbers.length <= 4) {
+            formatted =
+                numbers.substring(0, 2) +
+                '/' +
+                numbers.substring(2);
+        } else {
+            formatted =
+                numbers.substring(0, 2) +
+                '/' +
+                numbers.substring(2, 4) +
+                '/' +
+                numbers.substring(4, 8);
+        }
+
+        return formatted;
+    };
 
 
 
@@ -392,6 +546,67 @@ const SignupScreen = ({ navigation, route }) => {
         }
     };
 
+    const isValidDob = (value) => {
+        if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) {
+            return false;
+        }
+
+        const [day, month, year] = value.split('/').map(Number);
+
+        const date = new Date(year, month - 1, day);
+
+        return (
+            date.getFullYear() === year &&
+            date.getMonth() === month - 1 &&
+            date.getDate() === day
+        );
+    };
+
+
+    const isAtLeast18 = (dobValue) => {
+        if (!dobValue) return false;
+
+        const [day, month, year] = dobValue.split('/');
+
+        const birthDate = new Date(
+            Number(year),
+            Number(month) - 1,
+            Number(day)
+        );
+
+        const today = new Date();
+
+        let age =
+            today.getFullYear() -
+            birthDate.getFullYear();
+
+        const monthDifference =
+            today.getMonth() -
+            birthDate.getMonth();
+
+        if (
+            monthDifference < 0 ||
+            (
+                monthDifference === 0 &&
+                today.getDate() < birthDate.getDate()
+            )
+        ) {
+            age--;
+        }
+
+        return age >= 18;
+    };
+
+    const getMaximumDob = () => {
+        const today = new Date();
+
+        return new Date(
+            today.getFullYear() - 18,
+            today.getMonth(),
+            today.getDate()
+        );
+    };
+
     const handleSendOtp = () => {
         if (phoneNumber.length < 10) {
             Alert.alert('Invalid Number', 'Please enter a valid mobile number');
@@ -444,6 +659,8 @@ const SignupScreen = ({ navigation, route }) => {
         return { valid: true, message: 'Password is strong' };
     };
 
+
+
     const handleCompletePersonalDetails = () => {
 
 
@@ -481,6 +698,21 @@ const SignupScreen = ({ navigation, route }) => {
             return;
         }
 
+        if (!isValidDob(dob)) {
+            Alert.alert(
+                'Invalid Date',
+                'Please enter a valid date in DD/MM/YYYY format.'
+            );
+            return;
+        }
+        if (!isAtLeast18(dob)) {
+            Alert.alert(
+                'Invalid Date of Birth',
+                'You must be at least 18 years old.'
+            );
+            return;
+        }
+
         if (!password) {
             Alert.alert('Required', 'Please enter a password');
 
@@ -514,7 +746,7 @@ const SignupScreen = ({ navigation, route }) => {
 
         const [day, month, year] = dob.split('/');
 
-        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        return `${year}-${month}-${day}`;
     };
 
     const handleCompleteLocation = async () => {
@@ -1045,10 +1277,14 @@ const SignupScreen = ({ navigation, route }) => {
                     placeholder="DD/MM/YYYY"
                     placeholderTextColor="#999"
                     value={dob}
-                    onChangeText={setDob}
-                    keyboardType="default"
+                    onChangeText={(text) => {
+                        setDob(formatDobInput(text));
+                    }}
+                    keyboardType="number-pad"
                     maxLength={10}
                 />
+
+
             </View>
 
             <View style={styles.inputCard}>
@@ -1246,7 +1482,7 @@ const SignupScreen = ({ navigation, route }) => {
 
             <View style={styles.inputCard}>
                 <View style={styles.locationLabelRow}>
-                    <Text style={styles.inputLabel}>Current Location</Text>
+                    <Text style={styles.inputLabel}>Enter Your Working Location</Text>
 
                     {isFetchingLocation && (
                         <ActivityIndicator
@@ -1268,13 +1504,73 @@ const SignupScreen = ({ navigation, route }) => {
 
                     <TextInput
                         style={styles.locationInput}
-                        placeholder="Fetching your current location..."
+                        placeholder="Search your location"
                         placeholderTextColor="#999"
                         value={location}
-                        onChangeText={setLocation}
-                        multiline
+                        onChangeText={searchLocation}
+                        onFocus={() => {
+                            if (locationSuggestions.length > 0) {
+                                setShowLocationSuggestions(true);
+                            }
+                        }}
+                        autoCorrect={false}
+                        autoCapitalize="none"
                     />
+
+                    {isSearchingLocation && (
+                        <ActivityIndicator
+                            size="small"
+                            color="#FF8C00"
+                        />
+                    )}
                 </View>
+
+                {showLocationSuggestions &&
+                    locationSuggestions.length > 0 && (
+                        <View style={styles.locationSuggestionsContainer}>
+                            {locationSuggestions.map((item, index) => (
+                                <TouchableOpacity
+                                    key={`${item.place_id}-${index}`}
+                                    style={styles.locationSuggestionItem}
+                                    onPress={() => handleLocationSelect(item)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Image
+                                        source={require('../../asset/location-outline.png')}
+                                        style={styles.locationSuggestionIcon}
+                                    />
+
+                                    <View
+                                        style={
+                                            styles.locationSuggestionTextContainer
+                                        }
+                                    >
+                                        <Text
+                                            style={
+                                                styles.locationSuggestionTitle
+                                            }
+                                            numberOfLines={1}
+                                        >
+                                            {item.structured_formatting
+                                                ?.main_text ||
+                                                item.description ||
+                                                ''}
+                                        </Text>
+
+                                        <Text
+                                            style={
+                                                styles.locationSuggestionAddress
+                                            }
+                                            numberOfLines={2}
+                                        >
+                                            {item.structured_formatting
+                                                ?.secondary_text || ''}
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
 
                 <TouchableOpacity
                     style={styles.useCurrentLocationButton}
@@ -1350,7 +1646,7 @@ const SignupScreen = ({ navigation, route }) => {
 
                         }}
                     />
-                    <Text style={styles.locationPreviewText}>Location set: {location}</Text>
+                    <Text style={styles.locationPreviewText}>Working Location set: {location}</Text>
                 </View>
             )}
 
@@ -3146,6 +3442,84 @@ const styles = StyleSheet.create({
         color: '#4CAF50',
         fontWeight: '500',
         marginTop: 4,
+    },
+    locationSuggestionsContainer: {
+        marginTop: 4,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        overflow: 'hidden',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+        zIndex: 1000,
+    },
+
+    locationSuggestionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 11,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+
+    locationSuggestionIcon: {
+        width: 20,
+        height: 20,
+        tintColor: '#FF8C00',
+        marginRight: 10,
+    },
+
+    locationSuggestionTextContainer: {
+        flex: 1,
+    },
+
+    locationSuggestionTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1A1A1A',
+        marginBottom: 2,
+    },
+
+    locationSuggestionAddress: {
+        fontSize: 11,
+        color: '#777',
+        lineHeight: 15,
+    },
+
+    dobInput: {
+        height: 50,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 10,
+        paddingHorizontal: 14,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#FFFFFF',
+    },
+
+    dobText: {
+        flex: 1,
+        fontSize: 14,
+        color: '#222',
+    },
+
+    dobPlaceholder: {
+        color: '#999',
+    },
+
+    calendarIcon: {
+        width: 20,
+        height: 20,
+        resizeMode: 'contain',
     },
 });
 
