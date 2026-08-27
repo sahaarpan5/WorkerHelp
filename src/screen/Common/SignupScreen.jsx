@@ -94,6 +94,11 @@ const SignupScreen = ({ navigation, route }) => {
     const [selectedDocId, setSelectedDocId] = useState(null);
     const [uploadProgress, setUploadProgress] = useState(0);
 
+
+
+
+    const reverseGeocodeTimeout = useRef(null);
+
     const GOOGLE_MAPS_API_KEY =
         'AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g'
 
@@ -371,27 +376,46 @@ const SignupScreen = ({ navigation, route }) => {
 
                 try {
                     const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`,
-                        {
-                            headers: {
-                                'User-Agent': 'HomeHelpPartnerApp/1.0',
-                            },
-                        }
+                        `https://maps.googleapis.com/maps/api/geocode/json?` +
+                        `latlng=${latitude},${longitude}` +
+                        `&key=${GOOGLE_MAPS_API_KEY}`
                     );
 
                     const data = await response.json();
 
-                    console.log('Address:', data);
+                    console.log('Google Address:', data);
 
-                    if (data?.display_name) {
-                        setLocation(data.display_name);
+                    if (
+                        data.status === 'OK' &&
+                        data.results?.length > 0
+                    ) {
+                        const address =
+                            data.results[0].formatted_address;
+
+                        setLocation(address);
+
+                        console.log('Address:', address);
                     } else {
-                        setLocation(`${latitude}, ${longitude}`);
-                    }
-                } catch (error) {
-                    console.log('Address lookup error:', error);
+                        console.log(
+                            'Google Geocoding Error:',
+                            data.status,
+                            data.error_message
+                        );
 
-                    setLocation(`${latitude}, ${longitude}`);
+                        setLocation(
+                            `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                        );
+                    }
+
+                } catch (error) {
+                    console.log(
+                        'Google Address Error:',
+                        error
+                    );
+
+                    setLocation(
+                        `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`
+                    );
                 }
 
                 setIsFetchingLocation(false);
@@ -597,14 +621,65 @@ const SignupScreen = ({ navigation, route }) => {
         return age >= 18;
     };
 
-    const getMaximumDob = () => {
-        const today = new Date();
+    const handleMapLocationChange = async (region) => {
+        const { latitude, longitude } = region;
 
-        return new Date(
-            today.getFullYear() - 18,
-            today.getMonth(),
-            today.getDate()
-        );
+        console.log('MAP LOCATION:', latitude, longitude);
+
+        // Update coordinates
+        setLatitude(latitude);
+        setLongitude(longitude);
+
+        // Update map region
+        setMapRegion(region);
+
+        // Clear previous timer
+        if (reverseGeocodeTimeout.current) {
+            clearTimeout(reverseGeocodeTimeout.current);
+        }
+
+        reverseGeocodeTimeout.current = setTimeout(async () => {
+            try {
+                const url =
+                    `https://maps.googleapis.com/maps/api/geocode/json` +
+                    `?latlng=${latitude},${longitude}` +
+                    `&key=${GOOGLE_MAPS_API_KEY}`;
+
+                console.log('GEOCODING URL:', url);
+
+                const response = await fetch(url);
+
+                const data = await response.json();
+
+                console.log('GEOCODING RESPONSE:', data);
+
+                if (
+                    data.status === 'OK' &&
+                    data.results &&
+                    data.results.length > 0
+                ) {
+                    const address =
+                        data.results[0].formatted_address;
+
+                    console.log('NEW ADDRESS:', address);
+
+                    // THIS IS THE IMPORTANT PART
+                    setLocation(address);
+                } else {
+                    console.log(
+                        'Address not found:',
+                        data.status,
+                        data.error_message
+                    );
+                }
+
+            } catch (error) {
+                console.log(
+                    'Reverse geocoding error:',
+                    error
+                );
+            }
+        }, 800);
     };
 
     const handleSendOtp = () => {
@@ -1482,7 +1557,7 @@ const SignupScreen = ({ navigation, route }) => {
 
             <View style={styles.inputCard}>
                 <View style={styles.locationLabelRow}>
-                    <Text style={styles.inputLabel}>Enter Your Working Location</Text>
+                    <Text style={styles.inputLabel}>Set Your Working Location</Text>
 
                     {isFetchingLocation && (
                         <ActivityIndicator
@@ -1516,6 +1591,25 @@ const SignupScreen = ({ navigation, route }) => {
                         autoCorrect={false}
                         autoCapitalize="none"
                     />
+
+                    {location.length > 0 && (
+                        <TouchableOpacity
+                            onPress={() => {
+                                setLocation('');
+                                setLocationSuggestions([]);
+                                setShowLocationSuggestions(false);
+                            }}
+                        >
+                            <Image
+                                source={require('../../asset/edit.png')}
+                                style={{
+                                    width: 20,
+                                    height: 20,
+                                    resizeMode: 'contain',
+                                }}
+                            />
+                        </TouchableOpacity>
+                    )}
 
                     {isSearchingLocation && (
                         <ActivityIndicator
@@ -1614,6 +1708,8 @@ const SignupScreen = ({ navigation, route }) => {
                         showsMyLocationButton={true}
                         zoomEnabled={true}
                         scrollEnabled={true}
+
+
                     >
                         <Marker
                             coordinate={{
@@ -1646,7 +1742,7 @@ const SignupScreen = ({ navigation, route }) => {
 
                         }}
                     />
-                    <Text style={styles.locationPreviewText}>Working Location set: {location}</Text>
+                    <Text style={styles.locationPreviewText}>Working Location : {location}</Text>
                 </View>
             )}
 
