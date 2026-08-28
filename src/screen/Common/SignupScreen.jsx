@@ -38,7 +38,7 @@ const SignupScreen = ({ navigation, route }) => {
     const [mobileVerified, setMobileVerified] = useState(false);
     const [currentStep, setCurrentStep] = useState(0);
     const [completedSteps, setCompletedSteps] = useState([]);
-    const totalSteps = 4;
+    const totalSteps = 5;
 
     // Step 1: Phone & OTP
 
@@ -62,6 +62,8 @@ const SignupScreen = ({ navigation, route }) => {
     const [locationSuggestions, setLocationSuggestions] = useState([]);
     const [isSearchingLocation, setIsSearchingLocation] = useState(false);
     const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+    const [area, setArea] = useState('');
+    const [pincode, setPincode] = useState('');
 
     // Step 4: Documents Upload
     const [selectedDocuments, setSelectedDocuments] = useState([]);
@@ -95,7 +97,11 @@ const SignupScreen = ({ navigation, route }) => {
     const [uploadProgress, setUploadProgress] = useState(0);
 
 
-
+    // Step 5: Services Selection
+    const [selectedServices, setSelectedServices] = useState([]);
+    const [showServiceModal, setShowServiceModal] = useState(false);
+    const [serviceSearchText, setServiceSearchText] = useState('');
+    const serviceModalSlideAnim = useRef(new Animated.Value(height)).current;
 
     const reverseGeocodeTimeout = useRef(null);
 
@@ -122,6 +128,22 @@ const SignupScreen = ({ navigation, route }) => {
         blue: '#0984E3',
         green: '#00B894',
     };
+
+
+    const availableServices = [
+        { id: '1', name: 'Home Cleaning', icon: '🧹', category: 'Cleaning' },
+        { id: '2', name: 'Deep Cleaning', icon: '🧽', category: 'Cleaning' },
+        { id: '3', name: 'Carpet Cleaning', icon: '🧵', category: 'Cleaning' },
+        { id: '4', name: 'Sofa Cleaning', icon: '🛋️', category: 'Cleaning' },
+        { id: '5', name: 'AC Service', icon: '❄️', category: 'Repair' },
+        { id: '6', name: 'Plumbing', icon: '🔧', category: 'Repair' },
+        { id: '7', name: 'Electrical', icon: '⚡', category: 'Repair' },
+        { id: '8', name: 'Pest Control', icon: '🐜', category: 'Cleaning' },
+        { id: '9', name: 'Painting', icon: '🎨', category: 'Repair' },
+        { id: '10', name: 'Furniture Assembly', icon: '🪑', category: 'Repair' },
+        { id: '11', name: 'Water Purifier Service', icon: '💧', category: 'Repair' },
+        { id: '12', name: 'Gardening', icon: '🌿', category: 'Cleaning' },
+    ];
 
     useEffect(() => {
         const mobileNo = route.params?.mobileNo;
@@ -240,10 +262,14 @@ const SignupScreen = ({ navigation, route }) => {
         try {
             setIsSearchingLocation(true);
 
+            // Close dropdown immediately
+            setShowLocationSuggestions(false);
+            setLocationSuggestions([]);
+
             const response = await fetch(
                 `https://maps.googleapis.com/maps/api/place/details/json` +
                 `?place_id=${item.place_id}` +
-                `&fields=formatted_address,geometry` +
+                `&fields=formatted_address,geometry,address_components` +
                 `&key=${GOOGLE_MAPS_API_KEY}`
             );
 
@@ -254,36 +280,107 @@ const SignupScreen = ({ navigation, route }) => {
             if (data.status !== 'OK') {
                 Alert.alert(
                     'Location Error',
-                    data.error_message || 'Unable to get location details.'
+                    data.error_message ||
+                    'Unable to get location details.'
                 );
                 return;
             }
 
             const result = data.result;
 
+            // -----------------------------
+            // Latitude / Longitude
+            // -----------------------------
             const selectedLatitude =
-                result.geometry.location.lat;
+                result.geometry?.location?.lat;
 
             const selectedLongitude =
-                result.geometry.location.lng;
+                result.geometry?.location?.lng;
 
+            // -----------------------------
+            // Full Address
+            // -----------------------------
             const address =
                 result.formatted_address ||
-                item.description;
+                item.description ||
+                '';
 
-            // Address shown to user
+            // -----------------------------
+            // Address Components
+            // -----------------------------
+            const components =
+                result.address_components || [];
+
+            console.log(
+                'Address Components:',
+                components
+            );
+
+            // -----------------------------
+            // Area
+            // -----------------------------
+            const areaComponent =
+                components.find(component =>
+                    component.types?.includes(
+                        'sublocality_level_1'
+                    )
+                ) ||
+                components.find(component =>
+                    component.types?.includes(
+                        'sublocality'
+                    )
+                ) ||
+                components.find(component =>
+                    component.types?.includes(
+                        'neighborhood'
+                    )
+                ) ||
+                components.find(component =>
+                    component.types?.includes(
+                        'administrative_area_level_2'
+                    )
+                ) ||
+                components.find(component =>
+                    component.types?.includes(
+                        'locality'
+                    )
+                );
+
+            const selectedArea =
+                areaComponent?.long_name || '';
+
+            // -----------------------------
+            // PIN Code
+            // -----------------------------
+            const pincodeComponent =
+                components.find(component =>
+                    component.types?.includes(
+                        'postal_code'
+                    )
+                );
+
+            const selectedPincode =
+                pincodeComponent?.long_name || '';
+
+            // -----------------------------
+            // Save everything
+            // -----------------------------
             setLocation(address);
+            setArea(selectedArea);
+            setPincode(selectedPincode);
 
-            // Coordinates stored for API
             setLatitude(selectedLatitude);
             setLongitude(selectedLongitude);
 
-            // Hide suggestions
-            setLocationSuggestions([]);
-            setShowLocationSuggestions(false);
+            // -----------------------------
+            // Move map
+            // -----------------------------
+
 
             console.log('Selected Location:', {
                 address,
+                area: selectedArea,
+                pincode: selectedPincode,
                 latitude: selectedLatitude,
                 longitude: selectedLongitude,
             });
@@ -296,6 +393,91 @@ const SignupScreen = ({ navigation, route }) => {
         } finally {
             setIsSearchingLocation(false);
         }
+    };
+
+
+    const getFilteredServices = () => {
+        if (!serviceSearchText.trim()) {
+            return availableServices;
+        }
+        return availableServices.filter(service =>
+            service.name.toLowerCase().includes(serviceSearchText.toLowerCase()) ||
+            service.category.toLowerCase().includes(serviceSearchText.toLowerCase())
+        );
+    };
+
+    const getCategories = () => {
+        const categories = [...new Set(availableServices.map(s => s.category))];
+        return categories;
+    };
+
+    const getServicesByCategory = (category) => {
+        return availableServices.filter(s => s.category === category);
+    };
+
+    const toggleServiceSelection = (serviceId) => {
+        if (selectedServices.includes(serviceId)) {
+            setSelectedServices(selectedServices.filter(id => id !== serviceId));
+        } else {
+            setSelectedServices([...selectedServices, serviceId]);
+        }
+    };
+
+    const isServiceSelected = (serviceId) => {
+        return selectedServices.includes(serviceId);
+    };
+
+    const getServiceName = (serviceId) => {
+        const service = availableServices.find(s => s.id === serviceId);
+        return service ? service.name : '';
+    };
+
+    const getServiceIcon = (serviceId) => {
+        const service = availableServices.find(s => s.id === serviceId);
+        return service ? service.icon : '📌';
+    };
+
+    const animateServiceModalIn = () => {
+        serviceModalSlideAnim.setValue(height);
+        Animated.spring(serviceModalSlideAnim, {
+            toValue: 0,
+            friction: 8,
+            tension: 40,
+            useNativeDriver: true,
+        }).start();
+    };
+
+    const animateServiceModalOut = (callback) => {
+        Animated.timing(serviceModalSlideAnim, {
+            toValue: height,
+            duration: 300,
+            useNativeDriver: true,
+        }).start(() => {
+            if (callback) callback();
+        });
+    };
+
+    const openServiceModal = () => {
+        setShowServiceModal(true);
+        setTimeout(() => animateServiceModalIn(), 100);
+    };
+
+    const closeServiceModal = () => {
+        animateServiceModalOut(() => {
+            setShowServiceModal(false);
+            setServiceSearchText('');
+        });
+    };
+
+    const handleCompleteServices = () => {
+        if (selectedServices.length === 0) {
+            Alert.alert('Select Services', 'Please select at least one service you want to provide');
+            return;
+        }
+        markStepComplete(4);
+        Alert.alert('Success!', 'Your account has been created successfully!', [
+            { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
+        ]);
     };
 
     const formatDobInput = (text) => {
@@ -389,12 +571,44 @@ const SignupScreen = ({ navigation, route }) => {
                         data.status === 'OK' &&
                         data.results?.length > 0
                     ) {
-                        const address =
-                            data.results[0].formatted_address;
+                        const result = data.results[0];
 
-                        setLocation(address);
+                        const components = result.address_components || [];
+
+                        // Full address
+                        const address = result.formatted_address || '';
+
+                        // Area
+                        const areaComponent = components.find(component =>
+                            component.types?.includes('sublocality_level_1')
+                        ) || components.find(component =>
+                            component.types?.includes('sublocality')
+                        ) || components.find(component =>
+                            component.types?.includes('neighborhood')
+                        ) || components.find(component =>
+                            component.types?.includes('locality')
+                        );
+
+                        // PIN Code
+                        const pincodeComponent = components.find(component =>
+                            component.types?.includes('postal_code')
+                        );
+
+                        const selectedArea =
+                            areaComponent?.long_name || '';
+
+                        const selectedPincode =
+                            pincodeComponent?.long_name || '';
 
                         console.log('Address:', address);
+                        console.log('Area:', selectedArea);
+                        console.log('Pincode:', selectedPincode);
+                        console.log('Latitude:', latitude);
+                        console.log('Longitude:', longitude);
+
+                        setLocation(address);
+                        setArea(selectedArea);
+                        setPincode(selectedPincode);
                     } else {
                         console.log(
                             'Google Geocoding Error:',
@@ -527,6 +741,7 @@ const SignupScreen = ({ navigation, route }) => {
             image: require('../../asset/cloud-upload.png'),
             label: 'Documents',
         },
+        { image: require('../../asset/skill.png'), label: 'Services' },
 
     ];
 
@@ -621,66 +836,7 @@ const SignupScreen = ({ navigation, route }) => {
         return age >= 18;
     };
 
-    const handleMapLocationChange = async (region) => {
-        const { latitude, longitude } = region;
 
-        console.log('MAP LOCATION:', latitude, longitude);
-
-        // Update coordinates
-        setLatitude(latitude);
-        setLongitude(longitude);
-
-        // Update map region
-        setMapRegion(region);
-
-        // Clear previous timer
-        if (reverseGeocodeTimeout.current) {
-            clearTimeout(reverseGeocodeTimeout.current);
-        }
-
-        reverseGeocodeTimeout.current = setTimeout(async () => {
-            try {
-                const url =
-                    `https://maps.googleapis.com/maps/api/geocode/json` +
-                    `?latlng=${latitude},${longitude}` +
-                    `&key=${GOOGLE_MAPS_API_KEY}`;
-
-                console.log('GEOCODING URL:', url);
-
-                const response = await fetch(url);
-
-                const data = await response.json();
-
-                console.log('GEOCODING RESPONSE:', data);
-
-                if (
-                    data.status === 'OK' &&
-                    data.results &&
-                    data.results.length > 0
-                ) {
-                    const address =
-                        data.results[0].formatted_address;
-
-                    console.log('NEW ADDRESS:', address);
-
-                    // THIS IS THE IMPORTANT PART
-                    setLocation(address);
-                } else {
-                    console.log(
-                        'Address not found:',
-                        data.status,
-                        data.error_message
-                    );
-                }
-
-            } catch (error) {
-                console.log(
-                    'Reverse geocoding error:',
-                    error
-                );
-            }
-        }, 800);
-    };
 
     const handleSendOtp = () => {
         if (phoneNumber.length < 10) {
@@ -944,9 +1100,8 @@ const SignupScreen = ({ navigation, route }) => {
             return;
         }
 
-        Alert.alert('Success!', 'Your account has been created successfully!', [
-            { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
-        ]);
+        markStepComplete(3);
+        goToNextStep();
     };
 
     const handleCompleteSignup = () => {
@@ -960,11 +1115,146 @@ const SignupScreen = ({ navigation, route }) => {
             Alert.alert('PIN Mismatch', 'PIN and Confirm PIN do not match');
             return;
         }
-        markStepComplete(4);
-        Alert.alert('Success!', 'Your account has been created successfully!', [
-            { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
-        ]);
+        markStepComplete(3);
+        goToNextStep();
     };
+
+
+    const renderServiceModal = () => (
+        <Modal
+            transparent={true}
+            visible={showServiceModal}
+            animationType="none"
+            onRequestClose={closeServiceModal}
+        >
+            <TouchableWithoutFeedback onPress={closeServiceModal}>
+                <View style={styles.modalOverlay}>
+                    <TouchableWithoutFeedback>
+                        <Animated.View
+                            style={[
+                                styles.serviceModalContent,
+                                { transform: [{ translateY: serviceModalSlideAnim }] }
+                            ]}
+                        >
+                            <View style={styles.modalHandle} />
+                            <View style={styles.serviceModalHeader}>
+                                <Text style={styles.serviceModalTitle}>Select Services</Text>
+                                <Text style={styles.serviceModalSubtitle}>
+                                    Choose the services you want to provide
+                                </Text>
+                            </View>
+
+                            {/* Search Input */}
+                            <View style={styles.serviceSearchContainer}>
+                                <Image
+                                    source={require('../../asset/search.png')}
+                                    style={{ width: 20, height: 20, tintColor: '#999', resizeMode: 'contain', marginRight: 10 }}
+                                />
+                                <TextInput
+                                    style={styles.serviceSearchInput}
+                                    placeholder="Search services..."
+                                    placeholderTextColor="#999"
+                                    value={serviceSearchText}
+                                    onChangeText={setServiceSearchText}
+                                />
+                                {serviceSearchText.length > 0 && (
+                                    <TouchableOpacity onPress={() => setServiceSearchText('')}>
+                                        <Image
+                                            source={require('../../asset/close.png')}
+                                            style={{ width: 20, height: 20, tintColor: '#999', resizeMode: 'contain' }}
+                                        />
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            {/* Selected Count */}
+                            <View style={styles.selectedCountContainer}>
+                                <Text style={styles.selectedCountText}>
+                                    {selectedServices.length} service{selectedServices.length !== 1 ? 's' : ''} selected
+                                </Text>
+                            </View>
+
+                            <ScrollView style={styles.serviceList} showsVerticalScrollIndicator={false}>
+                                {getFilteredServices().length === 0 ? (
+                                    <View style={styles.noServicesContainer}>
+                                        <Text style={styles.noServicesText}>No services found</Text>
+                                    </View>
+                                ) : (
+                                    getCategories().map((category) => {
+                                        const filteredServices = getServicesByCategory(category).filter(s =>
+                                            s.name.toLowerCase().includes(serviceSearchText.toLowerCase()) ||
+                                            s.category.toLowerCase().includes(serviceSearchText.toLowerCase())
+                                        );
+                                        if (filteredServices.length === 0) return null;
+                                        return (
+                                            <View key={category} style={styles.categorySection}>
+                                                <Text style={styles.categoryTitle}>{category}</Text>
+                                                {filteredServices.map((service) => (
+                                                    <TouchableOpacity
+                                                        key={service.id}
+                                                        style={[
+                                                            styles.serviceItem,
+                                                            isServiceSelected(service.id) && styles.serviceItemSelected,
+                                                        ]}
+                                                        onPress={() => toggleServiceSelection(service.id)}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <View style={styles.serviceItemLeft}>
+                                                            <Text style={styles.serviceIcon}>{service.icon}</Text>
+                                                            <Text style={[
+                                                                styles.serviceName,
+                                                                isServiceSelected(service.id) && styles.serviceNameSelected,
+                                                            ]}>
+                                                                {service.name}
+                                                            </Text>
+                                                        </View>
+                                                        <View style={[
+                                                            styles.serviceCheckbox,
+                                                            isServiceSelected(service.id) && styles.serviceCheckboxSelected,
+                                                        ]}>
+                                                            {isServiceSelected(service.id) && (
+                                                                <Image
+                                                                    source={require('../../asset/check.png')}
+                                                                    style={{ width: 12, height: 12, tintColor: '#FFFFFF', resizeMode: 'contain' }}
+                                                                />
+                                                            )}
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                ))}
+                                            </View>
+                                        );
+                                    })
+                                )}
+                            </ScrollView>
+
+                            <View style={styles.serviceModalActions}>
+                                <TouchableOpacity
+                                    style={[styles.serviceModalButton, styles.serviceModalCancelButton]}
+                                    onPress={closeServiceModal}
+                                >
+                                    <Text style={styles.serviceModalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[styles.serviceModalButton, styles.serviceModalConfirmButton]}
+                                    onPress={() => {
+                                        if (selectedServices.length === 0) {
+                                            Alert.alert('Select Services', 'Please select at least one service');
+                                            return;
+                                        }
+                                        closeServiceModal();
+                                    }}
+                                >
+                                    <Text style={styles.serviceModalConfirmText}>
+                                        Confirm ({selectedServices.length})
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        </Animated.View>
+                    </TouchableWithoutFeedback>
+                </View>
+            </TouchableWithoutFeedback>
+        </Modal>
+    );
 
 
 
@@ -1028,6 +1318,77 @@ const SignupScreen = ({ navigation, route }) => {
             </View>
         );
     };
+
+
+    const renderServicesStep = () => (
+        <Animated.View style={[styles.stepContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <View style={styles.stepHeader}>
+                <View style={styles.stepIconContainer}>
+                    <Image
+                        source={require('../../asset/skill.png')}
+                        style={{ width: 28, height: 28, tintColor: "#FF8C00" }}
+                    />
+                </View>
+                <View>
+                    <Text style={styles.stepTitle}>Select Services</Text>
+                    <Text style={styles.stepSubtitle}>Choose the services you want to provide</Text>
+                </View>
+            </View>
+
+            <View style={styles.inputCard}>
+                <Text style={styles.inputLabel}>Your are interested in</Text>
+
+                <TouchableOpacity
+                    style={styles.serviceSelectionButton}
+                    onPress={openServiceModal}
+                    activeOpacity={0.8}
+                >
+                    <View style={styles.serviceSelectionLeft}>
+                        <Image
+                            source={require('../../asset/skill.png')}
+                            style={{ width: 22, height: 22, tintColor: '#FF8C00', resizeMode: 'contain' }}
+                        />
+                        <Text style={styles.serviceSelectionText}>
+                            {selectedServices.length > 0
+                                ? `${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} selected`
+                                : 'Tap to select services'}
+                        </Text>
+                    </View>
+                    <Image
+                        source={require('../../asset/arrow-forward.png')}
+                        style={{ width: 16, height: 16, tintColor: '#999', resizeMode: 'contain' }}
+                    />
+                </TouchableOpacity>
+
+                {selectedServices.length > 0 && (
+                    <View style={styles.selectedServicesTags}>
+                        {selectedServices.map((serviceId) => (
+                            <View key={serviceId} style={styles.serviceTag}>
+                                <Text style={styles.serviceTagIcon}>{getServiceIcon(serviceId)}</Text>
+                                <Text style={styles.serviceTagText}>{getServiceName(serviceId)}</Text>
+                            </View>
+                        ))}
+                    </View>
+                )}
+
+                {selectedServices.length === 0 && (
+                    <Text style={styles.serviceHelperText}>
+                        Select at least one service you want to provide
+                    </Text>
+                )}
+            </View>
+
+            <TouchableOpacity
+                style={[styles.primaryButton, selectedServices.length === 0 && styles.buttonDisabled]}
+                onPress={handleCompleteServices}
+                disabled={selectedServices.length === 0}
+            >
+                <Text style={styles.primaryButtonText}>Create Account →</Text>
+            </TouchableOpacity>
+
+            {renderServiceModal()}
+        </Animated.View>
+    );
 
     const renderPhoneStep = () => (
         <Animated.View style={[styles.stepContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
@@ -1557,7 +1918,7 @@ const SignupScreen = ({ navigation, route }) => {
 
             <View style={styles.inputCard}>
                 <View style={styles.locationLabelRow}>
-                    <Text style={styles.inputLabel}>Set Your Working Location</Text>
+                    <Text style={styles.inputLabel}>Preferable Working Location</Text>
 
                     {isFetchingLocation && (
                         <ActivityIndicator
@@ -1626,14 +1987,11 @@ const SignupScreen = ({ navigation, route }) => {
                                 <TouchableOpacity
                                     key={`${item.place_id}-${index}`}
                                     style={styles.locationSuggestionItem}
-                                    onPress={() => handleLocationSelect(item)}
+                                    onPress={() =>
+                                        handleLocationSelect(item)
+                                    }
                                     activeOpacity={0.7}
                                 >
-                                    <Image
-                                        source={require('../../asset/location-outline.png')}
-                                        style={styles.locationSuggestionIcon}
-                                    />
-
                                     <View
                                         style={
                                             styles.locationSuggestionTextContainer
@@ -1647,8 +2005,7 @@ const SignupScreen = ({ navigation, route }) => {
                                         >
                                             {item.structured_formatting
                                                 ?.main_text ||
-                                                item.description ||
-                                                ''}
+                                                item.description}
                                         </Text>
 
                                         <Text
@@ -1751,7 +2108,16 @@ const SignupScreen = ({ navigation, route }) => {
                 onPress={handleCompleteLocation}
                 disabled={!location}
             >
-                <Text style={styles.primaryButtonText}>Continue →</Text>
+                {isLoading ? (
+                    <ActivityIndicator
+                        size="small"
+                        color="#FFFFFF"
+                    />
+                ) : (
+                    <Text style={styles.primaryButtonText}>
+                        Continue →
+                    </Text>
+                )}
             </TouchableOpacity>
         </Animated.View>
     );
@@ -2523,7 +2889,7 @@ const SignupScreen = ({ navigation, route }) => {
                 onPress={handleCompleteDocuments}
                 disabled={selectedDocuments.length === 0}
             >
-                <Text style={styles.primaryButtonText}>Create Account →</Text>
+                <Text style={styles.primaryButtonText}>Continue →</Text>
             </TouchableOpacity>
 
             {/* Upload Modal */}
@@ -2637,7 +3003,7 @@ const SignupScreen = ({ navigation, route }) => {
                 style={styles.primaryButton}
                 onPress={handleCompleteSignup}
             >
-                <Text style={styles.primaryButtonText}>Create Account →</Text>
+                <Text style={styles.primaryButtonText}>Continue →</Text>
             </TouchableOpacity>
         </Animated.View>
     );
@@ -2648,7 +3014,7 @@ const SignupScreen = ({ navigation, route }) => {
             case 1: return renderPersonalDetailsStep();
             case 2: return renderLocationStep();
             case 3: return renderDocumentsStep();
-            case 4: return renderPinStep();
+            case 4: return renderServicesStep();
             default: return null;
         }
     };
@@ -3616,6 +3982,220 @@ const styles = StyleSheet.create({
         width: 20,
         height: 20,
         resizeMode: 'contain',
+    },
+
+
+    serviceSelectionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#F8F9FA',
+        paddingHorizontal: 16,
+        paddingVertical: 14,
+        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        marginTop: 4,
+    },
+    serviceSelectionLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    serviceSelectionText: {
+        fontSize: 14,
+        color: '#1A1A1A',
+        fontWeight: '500',
+    },
+    selectedServicesTags: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 12,
+    },
+    serviceTag: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF8F3',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#FFE0CC',
+        gap: 4,
+    },
+    serviceTagIcon: {
+        fontSize: 14,
+    },
+    serviceTagText: {
+        fontSize: 12,
+        color: '#1A1A1A',
+        fontWeight: '500',
+    },
+    serviceHelperText: {
+        fontSize: 12,
+        color: '#999',
+        marginTop: 10,
+        fontStyle: 'italic',
+        textAlign: 'center',
+    },
+    // Service Modal Styles
+    serviceModalContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 20,
+        maxHeight: height * 0.85,
+    },
+    serviceModalHeader: {
+        marginBottom: 16,
+    },
+    serviceModalTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        textAlign: 'center',
+    },
+    serviceModalSubtitle: {
+        fontSize: 14,
+        color: '#666',
+        textAlign: 'center',
+        marginTop: 4,
+    },
+    serviceSearchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        marginBottom: 12,
+    },
+    serviceSearchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#1A1A1A',
+        padding: 0,
+    },
+    selectedCountContainer: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        marginBottom: 12,
+    },
+    selectedCountText: {
+        fontSize: 13,
+        color: '#FF8C00',
+        fontWeight: '600',
+    },
+    serviceList: {
+        maxHeight: height * 0.5,
+    },
+    categorySection: {
+        marginBottom: 12,
+    },
+    categoryTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        marginBottom: 8,
+        paddingHorizontal: 4,
+    },
+    serviceItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        borderRadius: 10,
+        backgroundColor: '#F8F9FA',
+        marginBottom: 6,
+        borderWidth: 1,
+        borderColor: 'transparent',
+    },
+    serviceItemSelected: {
+        backgroundColor: '#FFF8F3',
+        borderColor: '#FF8C00',
+    },
+    serviceItemLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    serviceIcon: {
+        fontSize: 20,
+    },
+    serviceName: {
+        fontSize: 14,
+        color: '#1A1A1A',
+        fontWeight: '500',
+    },
+    serviceNameSelected: {
+        color: '#FF8C00',
+        fontWeight: '600',
+    },
+    serviceCheckbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: '#E8E8E8',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+    serviceCheckboxSelected: {
+        backgroundColor: '#FF8C00',
+        borderColor: '#FF8C00',
+    },
+    noServicesContainer: {
+        paddingVertical: 30,
+        alignItems: 'center',
+    },
+    noServicesText: {
+        fontSize: 15,
+        color: '#999',
+    },
+    serviceModalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 16,
+        paddingTop: 16,
+        borderTopWidth: 1,
+        borderTopColor: '#F0F0F0',
+    },
+    serviceModalButton: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    serviceModalCancelButton: {
+        backgroundColor: '#F8F9FA',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    serviceModalCancelText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#666',
+    },
+    serviceModalConfirmButton: {
+        backgroundColor: '#FF8C00',
+        shadowColor: '#FF8C00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    serviceModalConfirmText: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
 });
 
