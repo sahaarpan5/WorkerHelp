@@ -1003,6 +1003,9 @@ const SignupScreen = ({ navigation, route }) => {
                 password: password,
                 latitude: latitude,
                 longitude: longitude,
+                prefferedArea:area,
+                prefferedAreaAddress:location,
+                prefferedAreaPINcode:pincode
 
             };
 

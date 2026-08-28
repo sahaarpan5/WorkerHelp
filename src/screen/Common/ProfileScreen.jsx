@@ -1,3 +1,4 @@
+import Geolocation from '@react-native-community/geolocation';
 import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
@@ -14,23 +15,34 @@ import {
     Alert,
     Modal,
     FlatList,
-    TouchableWithoutFeedback
+    TouchableWithoutFeedback,
+    ActivityIndicator,
+    Platform,
+    PermissionsAndroid
 } from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import API from '../../util/API';
 
+import {
+    launchCamera,
+    launchImageLibrary,
+} from 'react-native-image-picker';
+import axios from 'axios';
 
 const { width, height } = Dimensions.get('window');
 
 const ProfileScreen = ({ navigation }) => {
     // Profile state
-    const [profileImage, setProfileImage] = useState('https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=crop');
-    const [firstName, setFirstName] = useState('Rajesh');
-    const [lastName, setLastName] = useState('Kumar');
-    const [mobileNumber, setMobileNumber] = useState('+91 98765 43210');
-    const [email, setEmail] = useState('rajesh.kumar@email.com');
-    const [location, setLocation] = useState('Andheri East, Mumbai');
+    const [profileImage, setProfileImage] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [mobileNumber, setMobileNumber] = useState('');
+    const [email, setEmail] = useState('');
+    const [location, setLocation] = useState('');
     const [isEditingLocation, setIsEditingLocation] = useState(false);
-    const [experience, setExperience] = useState('5 years');
-    const [experienceYears, setExperienceYears] = useState('5');
+    const [experience, setExperience] = useState('');
+    const [experienceYears, setExperienceYears] = useState('');
     const [showExperienceModal, setShowExperienceModal] = useState(false);
     const [skills, setSkills] = useState(['Plumbing', 'Electrical', 'Cleaning']);
     const [showSkillBottomSheet, setShowSkillBottomSheet] = useState(false);
@@ -48,6 +60,33 @@ const ProfileScreen = ({ navigation }) => {
     const [tempDocId, setTempDocId] = useState(null);
     const [tempRefNumber, setTempRefNumber] = useState('');
     const [showDocumentOptions, setShowDocumentOptions] = useState(false);
+
+    const [showLocationModal, setShowLocationModal] = useState(false);
+    const [searchLocationText, setSearchLocationText] = useState('');
+    const [locationSuggestions, setLocationSuggestions] = useState([]);
+    const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+    const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+    const [tempLocation, setTempLocation] = useState('');
+    const [tempLatitude, setTempLatitude] = useState(null);
+    const [tempLongitude, setTempLongitude] = useState(null);
+    const [tempArea, setTempArea] = useState('');
+    const [tempPincode, setTempPincode] = useState('');
+    const [isFetchingLocation, setIsFetchingLocation] = useState(false);
+    const [mapRegion, setMapRegion] = useState(null);
+    const locationSearchTimeout = useRef(null);
+    const isReverseGeocoding = useRef(false);
+    const [showImagePickerModal, setShowImagePickerModal] = useState(false);
+    const [isProfileLoading, setIsProfileLoading] = useState(true);
+    const [completionPercentage, setCompletionPercentage] = useState(0);
+
+    const [profileCompleteness, setProfileCompleteness] = useState(0);
+    const [gender, setGender] = useState('');
+    const [dob, setDob] = useState('');
+    const [isDocumentUploading, setIsDocumentUploading] = useState(false);
+    const [documentUploadProgress, setDocumentUploadProgress] = useState(0);
+    const [uploadingDocId, setUploadingDocId] = useState(null);
+    const GOOGLE_MAPS_API_KEY =
+        'AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g'
 
     // 5 Documents
     const [uploadedDocuments, setUploadedDocuments] = useState([
@@ -120,18 +159,7 @@ const ProfileScreen = ({ navigation }) => {
     const ORANGE_COLOR = '#FF8C00';
 
     // Calculate profile completion
-    const calculateCompletion = () => {
-        let completed = 0;
-        const total = 7;
-        if (firstName) completed++;
-        if (lastName) completed++;
-        if (mobileNumber) completed++;
-        if (email) completed++;
-        if (location) completed++;
-        if (experience) completed++;
-        if (skills.length > 0) completed++;
-        return Math.round((completed / total) * 100);
-    };
+
 
     const starImages = {
         full: require('../../asset/star-fill.png'),
@@ -139,7 +167,7 @@ const ProfileScreen = ({ navigation }) => {
         empty: require('../../asset/star-outline.png'),
     };
 
-    const completionPercentage = calculateCompletion();
+    //const completionPercentage = calculateCompletion();
 
     const bottomSheetAnim = useRef(new Animated.Value(height)).current;
 
@@ -219,6 +247,10 @@ const ProfileScreen = ({ navigation }) => {
         };
     }, []);
 
+    useEffect(() => {
+        fetchProfile();
+    }, []);
+
     const animateModalIn = () => {
         modalSlideAnim.setValue(height);
         Animated.spring(modalSlideAnim, {
@@ -237,6 +269,1144 @@ const ProfileScreen = ({ navigation }) => {
         }).start(() => {
             if (callback) callback();
         });
+    };
+    const requestCameraPermission = async () => {
+        if (Platform.OS !== 'android') {
+            return true;
+        }
+
+        try {
+            const granted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.CAMERA,
+                {
+                    title: 'Camera Permission',
+                    message: 'Camera permission is required to capture your document.',
+                    buttonPositive: 'Allow',
+                    buttonNegative: 'Cancel',
+                }
+            );
+
+            return granted === PermissionsAndroid.RESULTS.GRANTED;
+        } catch (error) {
+            console.log('Camera permission error:', error);
+            return false;
+        }
+    };
+
+
+    const openDocumentCamera = async (docId) => {
+        try {
+            const hasPermission =
+                await requestCameraPermission();
+
+            if (!hasPermission) {
+                Alert.alert(
+                    'Camera Permission Required',
+                    'Please allow camera permission from your phone settings.'
+                );
+                return;
+            }
+
+            const result = await launchCamera({
+                mediaType: 'photo',
+                cameraType: 'back',
+                quality: 0.8,
+                maxWidth: 2000,
+                maxHeight: 2000,
+                saveToPhotos: false,
+            });
+
+            console.log(
+                'Camera result:',
+                result
+            );
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Camera Error',
+                    result.errorMessage ||
+                    'Unable to open camera.'
+                );
+                return;
+            }
+
+            const file =
+                result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to capture document.'
+                );
+                return;
+            }
+
+            // Upload immediately
+            await uploadDocumentToAPI(
+                docId,
+                file,
+                tempRefNumber
+            );
+
+        } catch (error) {
+            console.log(
+                'Document camera error:',
+                error
+            );
+
+            Alert.alert(
+                'Camera Error',
+                'Unable to capture document.'
+            );
+        }
+    };
+
+    const openDocumentGallery = async (docId) => {
+        try {
+
+            const result =
+                await launchImageLibrary({
+                    mediaType: 'photo',
+                    selectionLimit: 1,
+                    quality: 0.8,
+                    maxWidth: 2000,
+                    maxHeight: 2000,
+                });
+
+            console.log(
+                'Gallery result:',
+                result
+            );
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Gallery Error',
+                    result.errorMessage ||
+                    'Unable to open gallery.'
+                );
+                return;
+            }
+
+            const file =
+                result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to select document.'
+                );
+                return;
+            }
+
+            // Upload immediately
+            await uploadDocumentToAPI(
+                docId,
+                file,
+                tempRefNumber
+            );
+
+        } catch (error) {
+
+            console.log(
+                'Document gallery error:',
+                error
+            );
+
+            Alert.alert(
+                'Gallery Error',
+                'Unable to select document.'
+            );
+        }
+    };
+
+
+    const openSelfieCamera = async () => {
+        try {
+            // Request camera permission
+            const hasPermission = await requestCameraPermission();
+
+            if (!hasPermission) {
+                Alert.alert(
+                    'Camera Permission Required',
+                    'Please allow camera permission from your phone settings.'
+                );
+                return;
+            }
+
+            // Open FRONT camera
+            const result = await launchCamera({
+                mediaType: 'photo',
+                cameraType: 'front',
+                quality: 0.8,
+                maxWidth: 1000,
+                maxHeight: 1000,
+                saveToPhotos: false,
+            });
+
+            console.log('Selfie Camera Result:', result);
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Camera Error',
+                    result.errorMessage || 'Unable to open camera.'
+                );
+                return;
+            }
+
+            const file = result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to capture profile photo.'
+                );
+                return;
+            }
+
+            console.log('Captured Profile Image:', file);
+
+            // Show immediately on profile
+            setProfileImage(file.uri);
+
+            Alert.alert(
+                'Success',
+                'Profile photo captured successfully.'
+            );
+
+        } catch (error) {
+            console.log('Selfie camera error:', error);
+
+            Alert.alert(
+                'Camera Error',
+                'Unable to capture profile photo.'
+            );
+        }
+    };
+
+
+    const openProfileGallery = async () => {
+        try {
+            const result = await launchImageLibrary({
+                mediaType: 'photo',
+                selectionLimit: 1,
+                quality: 0.8,
+                maxWidth: 1000,
+                maxHeight: 1000,
+            });
+
+            console.log('Profile Gallery Result:', result);
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Gallery Error',
+                    result.errorMessage || 'Unable to open gallery.'
+                );
+                return;
+            }
+
+            const file = result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to select profile photo.'
+                );
+                return;
+            }
+
+            setProfileImage(file.uri);
+
+        } catch (error) {
+            console.log('Profile gallery error:', error);
+
+            Alert.alert(
+                'Gallery Error',
+                'Unable to select profile photo.'
+            );
+        }
+    };
+
+    const searchLocationPlaces = (text) => {
+        setSearchLocationText(text);
+
+        if (locationSearchTimeout.current) {
+            clearTimeout(locationSearchTimeout.current);
+        }
+
+        if (!text.trim() || text.trim().length < 3) {
+            setLocationSuggestions([]);
+            setShowLocationSuggestions(false);
+            return;
+        }
+
+        locationSearchTimeout.current = setTimeout(() => {
+            searchGooglePlaces(text.trim());
+        }, 700);
+    };
+
+
+    const fetchProfile = async () => {
+        try {
+            setIsProfileLoading(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            console.log('Profile Token:', token);
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return;
+            }
+
+            const response = await fetch(API.PARTNER_PROFILE, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            console.log('Profile API Response:', data);
+
+            if (!response.ok || data?.success !== true) {
+                Alert.alert(
+                    'Error',
+                    data?.message || 'Unable to fetch profile.',
+                    [
+                        {
+                            text: 'OK',
+                            onPress: () => navigation.goBack(),
+                        },
+                    ],
+                    { cancelable: false }
+                );
+                return;
+            }
+
+            // -----------------------------
+            // Personal Information
+            // -----------------------------
+
+            setFirstName(data.firstName || '');
+            setLastName(data.lastName || '');
+            setGender(data.gender || '');
+            setDob(formatDob(data.dob));
+            const preferredLocation =
+                `${data.preferredArea || ''}, ${data.preferredAreaPINcode || ''}`;
+            setLocation(preferredLocation)
+            setProfileCompleteness(
+                Number(data.profileCompletenessPercentage || 0)
+            );
+
+            const percentage = Number(
+                data.profileCompletenessPercentage || 0
+            );
+
+            setCompletionPercentage(percentage);
+
+            Animated.timing(progressAnim, {
+                toValue: percentage,
+                duration: 800,
+                useNativeDriver: false,
+            }).start();
+
+            setMobileNumber(
+                data.mobileNo
+                    ? `+91 ${data.mobileNo}`
+                    : ''
+            );
+
+            setEmail(data.email || '');
+
+            // -----------------------------
+            // Experience
+            // -----------------------------
+
+            const years = Number(data.experienceYears || 0);
+
+            setExperienceYears(
+                years > 10 ? '10+' : String(years)
+            );
+
+            setExperience(
+                years > 10
+                    ? '10+ years'
+                    : `${years} years`
+            );
+
+            // -----------------------------
+            // Location
+            // -----------------------------
+
+            if (
+                data.latitude !== null &&
+                data.longitude !== null
+            ) {
+                setTempLatitude(data.latitude);
+                setTempLongitude(data.longitude);
+
+                setMapRegion({
+                    latitude: Number(data.latitude),
+                    longitude: Number(data.longitude),
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                });
+
+                // Get address from coordinates
+                await reverseGeocodeLocation(
+                    Number(data.latitude),
+                    Number(data.longitude)
+                );
+            }
+
+            // -----------------------------
+            // Profile Photo
+            // -----------------------------
+
+            if (data.profilePhoto) {
+                setProfileImage(
+                    data.profilePhoto.startsWith('http')
+                        ? data.profilePhoto
+                        : `https://www.geniushomehelp.com/${data.profilePhoto}`
+                );
+            } else {
+                setProfileImage(null);
+            }
+
+            // -----------------------------
+            // Documents
+            // -----------------------------
+
+            if (Array.isArray(data.documents)) {
+
+                const documentMap = {
+                    'Aadhaar Card': {
+                        id: 1,
+                        name: 'Aadhar Card',
+                        image: require('../../asset/aadhaar.png'),
+                    },
+                    'PAN Card': {
+                        id: 3,
+                        name: 'PAN Card',
+                        image: require('../../asset/pan.png'),
+                    },
+                    'Passport': {
+                        id: 2,
+                        name: 'Passport',
+                        image: require('../../asset/passport.png'),
+                    },
+                    'Bank Passbook': {
+                        id: 4,
+                        name: 'Bank Passbook',
+                        image: require('../../asset/book.png'),
+                    },
+                    'Driving License': {
+                        id: 5,
+                        name: 'Driving License',
+                        image: require('../../asset/driving-license.png'),
+                    },
+                };
+
+                const updatedDocuments =
+                    uploadedDocuments.map(localDoc => {
+
+                        const apiDoc =
+                            data.documents.find(
+                                doc =>
+                                    doc.documentType === localDoc.name ||
+                                    (
+                                        localDoc.name === 'Aadhar Card' &&
+                                        doc.documentType === 'Aadhaar Card'
+                                    )
+                            );
+
+                        if (!apiDoc) {
+                            return {
+                                ...localDoc,
+                                uploaded: false,
+                                verified: false,
+                                documentNumber: '',
+                                refNumber: '',
+                                uploadDate: '',
+                                documentImage: null,
+                            };
+                        }
+
+                        return {
+                            ...localDoc,
+                            uploaded: true,
+
+                            verified:
+                                apiDoc.verificationStatus === 'Verified',
+
+                            documentNumber:
+                                apiDoc.documentNo || '',
+
+                            refNumber:
+                                apiDoc.documentNo || '',
+
+                            uploadDate:
+                                apiDoc.documentSubmittedOn
+                                    ? new Date(
+                                        apiDoc.documentSubmittedOn
+                                    ).toLocaleDateString(
+                                        'en-US',
+                                        {
+                                            day: 'numeric',
+                                            month: 'short',
+                                            year: 'numeric',
+                                        }
+                                    )
+                                    : '',
+
+                            documentImage:
+                                apiDoc.filePath
+                                    ? `https://www.geniushomehelp.com/${apiDoc.filePath}`
+                                    : null,
+
+                            verificationStatus:
+                                apiDoc.verificationStatus,
+
+                            documentId:
+                                apiDoc.documentId,
+                        };
+                    });
+
+                setUploadedDocuments(updatedDocuments);
+            }
+
+        } catch (error) {
+            console.log(
+                'Fetch Profile Error:',
+                error
+            );
+
+            Alert.alert(
+                'Error',
+                'Something went wrong while loading your profile.'
+            );
+
+        } finally {
+            setIsProfileLoading(false);
+        }
+    };
+
+
+    const uploadDocumentToAPI = async (docId, file, refNumber) => {
+        try {
+            // --------------------------------
+            // Find selected document
+            // --------------------------------
+            const doc = uploadedDocuments.find(
+                item => item.id === docId
+            );
+
+            if (!doc) {
+                Alert.alert(
+                    'Error',
+                    'Document not found.'
+                );
+                return false;
+            }
+
+            // --------------------------------
+            // Reference number
+            // --------------------------------
+            const referenceNumber =
+                refNumber?.trim().toUpperCase() || '';
+
+            // --------------------------------
+            // Validate reference number
+            // --------------------------------
+
+
+            // --------------------------------
+            // Validate file
+            // --------------------------------
+            if (!file?.uri) {
+                Alert.alert(
+                    'Document Required',
+                    'Please select or capture a document.'
+                );
+                return false;
+            }
+
+            // --------------------------------
+            // Get token
+            // --------------------------------
+            const token =
+                await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return false;
+            }
+
+            // --------------------------------
+            // Start upload
+            // --------------------------------
+            setIsDocumentUploading(true);
+            setUploadingDocId(docId);
+            setDocumentUploadProgress(0);
+
+            // --------------------------------
+            // Document Type
+            // --------------------------------
+            const documentTypeMap = {
+                'Aadhar Card': 'Aadhaar Card',
+                'Aadhaar Card': 'Aadhaar Card',
+                'PAN Card': 'PANCard',
+                'Passport': 'Passport',
+                'Bank Passbook': 'Bank Passbook',
+                'Driving License': 'Driving License',
+            };
+
+            const documentType =
+                documentTypeMap[doc.name] || doc.name;
+
+            // --------------------------------
+            // Create FormData
+            // --------------------------------
+            const formData = new FormData();
+
+            formData.append(
+                'DocumentType',
+                documentType
+            );
+
+            formData.append(
+                'DocumentNo',
+                referenceNumber
+            );
+
+            formData.append('File', {
+                uri: file.uri,
+
+                name:
+                    file.fileName ||
+                    file.name ||
+                    `document_${docId}_${Date.now()}.jpg`,
+
+                type:
+                    file.type ||
+                    'image/jpeg',
+            });
+
+            console.log(
+                'Document Upload Request:',
+                {
+                    DocumentType: documentType,
+                    DocumentNo: referenceNumber,
+                    File: {
+                        uri: file.uri,
+                        name:
+                            file.fileName ||
+                            file.name ||
+                            `document_${docId}_${Date.now()}.jpg`,
+                        type:
+                            file.type ||
+                            'image/jpeg',
+                    },
+                }
+            );
+
+            // --------------------------------
+            // Upload API
+            // --------------------------------
+            const response = await axios.post(
+                API.UPLOAD_PARTNER_DOCUMENT,
+                formData,
+                {
+                    headers: {
+                        'Content-Type':
+                            'multipart/form-data',
+
+                        Authorization:
+                            `Bearer ${token}`,
+
+                        Accept:
+                            'application/json',
+                    },
+
+                    onUploadProgress: progressEvent => {
+                        if (
+                            progressEvent.total
+                        ) {
+                            const progress =
+                                Math.round(
+                                    (
+                                        progressEvent.loaded *
+                                        100
+                                    ) /
+                                    progressEvent.total
+                                );
+
+                            console.log(
+                                `Document upload ${progress}%`
+                            );
+
+                            setDocumentUploadProgress(
+                                progress
+                            );
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Document Upload Response:',
+                response.data
+            );
+
+            // --------------------------------
+            // Upload successful
+            // --------------------------------
+            if (
+                response.data?.success === true
+            ) {
+                setDocumentUploadProgress(100);
+
+                // Refresh profile/document list
+                await fetchProfile();
+
+                // Update local document
+                setUploadedDocuments(
+                    previousDocuments =>
+                        previousDocuments.map(item =>
+                            item.id === docId
+                                ? {
+                                    ...item,
+                                    uploaded: true,
+                                    documentNumber:
+                                        referenceNumber,
+                                    refNumber:
+                                        referenceNumber,
+                                    documentImage:
+                                        file.uri,
+                                    verified: false,
+                                    verificationStatus:
+                                        'Pending',
+                                    uploadDate:
+                                        new Date().toLocaleDateString(
+                                            'en-US',
+                                            {
+                                                day: 'numeric',
+                                                month: 'short',
+                                                year: 'numeric',
+                                            }
+                                        ),
+                                }
+                                : item
+                        )
+                );
+
+                Alert.alert(
+                    'Upload Successful',
+                    response.data.message ||
+                    `${doc.name} uploaded successfully.`
+                );
+
+                return true;
+            }
+
+            // --------------------------------
+            // API success = false
+            // --------------------------------
+            Alert.alert(
+                'Upload Failed',
+                response.data?.message ||
+                'Unable to upload document.'
+            );
+
+            return false;
+
+        } catch (error) {
+
+            console.log(
+                'Document Upload Error:',
+                error?.response?.data ||
+                error.message
+            );
+
+            if (
+                error?.response?.status === 401
+            ) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+            } else {
+                Alert.alert(
+                    'Upload Failed',
+                    error?.response?.data?.message ||
+                    error.message ||
+                    'Something went wrong while uploading the document.'
+                );
+            }
+
+            return false;
+
+        } finally {
+
+            setIsDocumentUploading(false);
+            setUploadingDocId(null);
+
+            // Don't reset immediately if you want
+            // the user to see 100%.
+            setTimeout(() => {
+                setDocumentUploadProgress(0);
+            }, 500);
+        }
+    };
+
+
+    const validateDocumentNumber = (documentName, value) => {
+        const number = value.trim().toUpperCase();
+
+        if (!number) {
+            return 'Please enter reference number.';
+        }
+
+        switch (documentName) {
+
+            case 'Aadhar Card':
+            case 'Aadhaar Card':
+                if (!/^\d{12}$/.test(number)) {
+                    return 'Aadhaar number must contain exactly 12 digits.';
+                }
+                break;
+
+            case 'PAN Card':
+                if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(number)) {
+                    return 'Please enter a valid PAN number. Example: ABCDE1234F';
+                }
+                break;
+
+            case 'Passport':
+                if (!/^[A-Z][0-9]{7}$/.test(number)) {
+                    return 'Please enter a valid Passport number. Example: A1234567';
+                }
+                break;
+
+            case 'Driving License':
+                if (!/^[A-Z0-9-]{10,20}$/.test(number)) {
+                    return 'Please enter a valid Driving License number.';
+                }
+                break;
+
+            case 'Bank Passbook':
+                if (!/^\d{9,18}$/.test(number)) {
+                    return 'Please enter a valid bank account number.';
+                }
+                break;
+
+            default:
+                break;
+        }
+
+        return null;
+    };
+
+    const formatDob = (dob) => {
+        if (!dob) return '';
+
+        const [year, month, day] = dob.split('-');
+
+        const date = new Date(
+            Number(year),
+            Number(month) - 1,
+            Number(day)
+        );
+
+        return date.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        });
+    };
+
+    const getGenderImage = (gender) => {
+        const value = String(gender || '').toLowerCase();
+
+        if (value === 'female') {
+            return require('../../asset/woman.png');
+        }
+
+        if (
+            value === 'male' ||
+            value === 'man'
+        ) {
+            return require('../../asset/man.png');
+        }
+
+        return require('../../asset/genlogo.png');
+    };
+
+    const searchGooglePlaces = async (text) => {
+        try {
+            setIsSearchingLocation(true);
+
+            const response = await fetch(
+                `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
+                    text
+                )}&components=country:in&key=AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g`
+            );
+
+            const data = await response.json();
+
+            if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+                setLocationSuggestions([]);
+                return;
+            }
+
+            setLocationSuggestions(data.predictions || []);
+            setShowLocationSuggestions(data.predictions?.length > 0);
+
+        } catch (error) {
+            console.log('Google Places search error:', error);
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const handleLocationSelect = async (item) => {
+        try {
+            setIsSearchingLocation(true);
+            setShowLocationSuggestions(false);
+            setLocationSuggestions([]);
+
+            const response = await fetch(
+                `https://maps.googleapis.com/maps/api/place/details/json` +
+                `?place_id=${item.place_id}` +
+                `&fields=formatted_address,geometry,address_components` +
+                `&key=AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g`
+            );
+
+            const data = await response.json();
+
+            if (data.status !== 'OK') {
+                Alert.alert('Location Error', 'Unable to get location details.');
+                return;
+            }
+
+            const result = data.result;
+            const selectedLatitude = result.geometry?.location?.lat;
+            const selectedLongitude = result.geometry?.location?.lng;
+            const address = result.formatted_address || item.description || '';
+
+            const components = result.address_components || [];
+            const areaComponent = components.find(component =>
+                component.types?.includes('sublocality_level_1')
+            ) || components.find(component =>
+                component.types?.includes('sublocality')
+            ) || components.find(component =>
+                component.types?.includes('neighborhood')
+            ) || components.find(component =>
+                component.types?.includes('locality')
+            );
+
+            const pincodeComponent = components.find(component =>
+                component.types?.includes('postal_code')
+            );
+
+            setTempLocation(address);
+            setTempArea(areaComponent?.long_name || '');
+            setTempPincode(pincodeComponent?.long_name || '');
+            setTempLatitude(selectedLatitude);
+            setTempLongitude(selectedLongitude);
+            setMapRegion({
+                latitude: selectedLatitude,
+                longitude: selectedLongitude,
+                latitudeDelta: 0.005,
+                longitudeDelta: 0.005,
+            });
+            setSearchLocationText(address);
+
+        } catch (error) {
+            console.log('Place details error:', error);
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
+    const requestLocationPermission = async () => {
+        if (Platform.OS !== 'android') {
+            return true;
+        }
+
+        try {
+            const granted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+                {
+                    title: 'Location Permission',
+                    message:
+                        'HomeHelp Partner needs your location to find nearby opportunities and set your service location.',
+                    buttonPositive: 'Allow',
+                    buttonNegative: 'Cancel',
+                }
+            );
+
+            return granted === PermissionsAndroid.RESULTS.GRANTED;
+        } catch (error) {
+            console.log('Permission error:', error);
+            return false;
+        }
+    };
+
+    const fetchCurrentLocationForModal = async () => {
+        if (isFetchingLocation) return;
+
+        setIsFetchingLocation(true);
+
+        const hasPermission = await requestLocationPermission();
+
+        if (!hasPermission) {
+            setIsFetchingLocation(false);
+            Alert.alert(
+                'Location Permission Required',
+                'Please allow location permission from your phone settings to continue.'
+            );
+            return;
+        }
+
+        Geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                setTempLatitude(latitude);
+                setTempLongitude(longitude);
+                setMapRegion({
+                    latitude: latitude,
+                    longitude: longitude,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                });
+
+                await reverseGeocodeLocation(latitude, longitude);
+
+                setIsFetchingLocation(false);
+            },
+            (error) => {
+                setIsFetchingLocation(false);
+                Alert.alert('Location Error', 'Unable to get your current location. Please try again.');
+            },
+            {
+                enableHighAccuracy: false,
+                timeout: 30000,
+                maximumAge: 60000,
+                distanceFilter: 10,
+            }
+        );
+    };
+
+    // 3. Reverse Geocode
+    const reverseGeocodeLocation = async (
+        latitude,
+        longitude,
+        updateMainLocation = false
+    ) => {
+        if (isReverseGeocoding.current) return;
+
+        isReverseGeocoding.current = true;
+
+        try {
+            const response = await fetch(
+                `https://maps.googleapis.com/maps/api/geocode/json?` +
+                `latlng=${latitude},${longitude}` +
+                `&key=${GOOGLE_MAPS_API_KEY}`
+            );
+
+            const data = await response.json();
+
+            if (
+                data.status === 'OK' &&
+                data.results?.length > 0
+            ) {
+                const result = data.results[0];
+
+                const components =
+                    result.address_components || [];
+
+                const address =
+                    result.formatted_address || '';
+
+                const areaComponent =
+                    components.find(component =>
+                        component.types?.includes(
+                            'sublocality_level_1'
+                        )
+                    ) ||
+                    components.find(component =>
+                        component.types?.includes(
+                            'sublocality'
+                        )
+                    ) ||
+                    components.find(component =>
+                        component.types?.includes(
+                            'neighborhood'
+                        )
+                    ) ||
+                    components.find(component =>
+                        component.types?.includes(
+                            'locality'
+                        )
+                    );
+
+                const pincodeComponent =
+                    components.find(component =>
+                        component.types?.includes(
+                            'postal_code'
+                        )
+                    );
+
+                const selectedArea =
+                    areaComponent?.long_name || '';
+
+                const selectedPincode =
+                    pincodeComponent?.long_name || '';
+
+                setTempLocation(address);
+                setTempArea(selectedArea);
+                setTempPincode(selectedPincode);
+
+                setSearchLocationText(address);
+
+                if (updateMainLocation) {
+                    setLocation(address);
+                }
+            }
+
+        } catch (error) {
+            console.log(
+                'Reverse geocode error:',
+                error
+            );
+        } finally {
+            isReverseGeocoding.current = false;
+        }
     };
 
 
@@ -306,7 +1476,35 @@ const ProfileScreen = ({ navigation }) => {
 
     // Location Edit Handlers
     const handleEditLocation = () => {
-        setIsEditingLocation(true);
+        setTempLocation(location);
+        setTempLatitude(28.6139); // Default Delhi coordinates
+        setTempLongitude(77.2090);
+        setTempArea('');
+        setTempPincode('');
+        setSearchLocationText('');
+        setLocationSuggestions([]);
+        setShowLocationSuggestions(false);
+        setShowLocationModal(true);
+        setTimeout(() => {
+            if (mapRegion) {
+                setMapRegion({
+                    latitude: tempLatitude || 28.6139,
+                    longitude: tempLongitude || 77.2090,
+                    latitudeDelta: 0.005,
+                    longitudeDelta: 0.005,
+                });
+            }
+        }, 100);
+    };
+
+    const handleSaveLocationFromModal = () => {
+        if (!tempLocation.trim()) {
+            Alert.alert('Required', 'Please select a location');
+            return;
+        }
+        setLocation(tempLocation);
+        setShowLocationModal(false);
+        Alert.alert('Success', 'Location updated successfully!');
     };
 
     const handleSaveLocation = () => {
@@ -378,57 +1576,13 @@ const ProfileScreen = ({ navigation }) => {
                 {
                     text: 'Camera',
                     onPress: () => {
-                        Alert.alert(
-                            'Camera',
-                            'Take a photo of your document',
-                            [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                    text: 'Capture',
-                                    onPress: () => {
-                                        const updatedDocs = uploadedDocuments.map(doc =>
-                                            doc.id === docId ? {
-                                                ...doc,
-                                                uploaded: true,
-                                                documentImage: 'https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=200&h=150&fit=crop',
-                                                uploadDate: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-                                                documentNumber: doc.refNumber
-                                            } : doc
-                                        );
-                                        setUploadedDocuments(updatedDocs);
-                                        Alert.alert('Success', 'Document uploaded successfully!');
-                                    }
-                                }
-                            ]
-                        );
+                        openDocumentCamera(docId);
                     }
                 },
                 {
                     text: 'Gallery',
                     onPress: () => {
-                        Alert.alert(
-                            'Gallery',
-                            'Choose document from gallery',
-                            [
-                                { text: 'Cancel', style: 'cancel' },
-                                {
-                                    text: 'Select',
-                                    onPress: () => {
-                                        const updatedDocs = uploadedDocuments.map(doc =>
-                                            doc.id === docId ? {
-                                                ...doc,
-                                                uploaded: true,
-                                                documentImage: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=200&h=150&fit=crop',
-                                                uploadDate: new Date().toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }),
-                                                documentNumber: doc.refNumber
-                                            } : doc
-                                        );
-                                        setUploadedDocuments(updatedDocs);
-                                        Alert.alert('Success', 'Document uploaded successfully!');
-                                    }
-                                }
-                            ]
-                        );
+                        openDocumentGallery(docId);
                     }
                 },
             ]
@@ -436,19 +1590,55 @@ const ProfileScreen = ({ navigation }) => {
     };
 
     const handleSaveRefNumber = () => {
-        if (!tempRefNumber.trim()) {
-            Alert.alert('Required', 'Please enter a reference number');
+
+        const doc = uploadedDocuments.find(
+            item => item.id === tempDocId
+        );
+
+        if (!doc) {
             return;
         }
 
-        const updatedDocs = uploadedDocuments.map(doc =>
-            doc.id === tempDocId ? { ...doc, refNumber: tempRefNumber.trim() } : doc
-        );
+        const referenceNumber =
+            tempRefNumber.trim().toUpperCase();
+
+        // Validate
+        const validationError =
+            validateDocumentNumber(
+                doc.name,
+                referenceNumber
+            );
+
+        if (validationError) {
+            Alert.alert(
+                'Invalid Reference Number',
+                validationError
+            );
+            return;
+        }
+
+        // Save reference number
+        const updatedDocs =
+            uploadedDocuments.map(item =>
+                item.id === tempDocId
+                    ? {
+                        ...item,
+                        refNumber:
+                            referenceNumber,
+                        documentNumber:
+                            referenceNumber,
+                    }
+                    : item
+            );
+
         setUploadedDocuments(updatedDocs);
+
         setShowRefNumberModal(false);
 
-        // Show upload options after saving ref number
-        setTimeout(() => showUploadOptions(tempDocId), 300);
+        // Open Camera / Gallery
+        setTimeout(() => {
+            showUploadOptions(tempDocId);
+        }, 300);
     };
 
     const handleEditDocument = (docId) => {
@@ -497,6 +1687,415 @@ const ProfileScreen = ({ navigation }) => {
             ]
         );
     };
+    const renderImagePickerModal = () => (
+        <Modal
+            visible={showImagePickerModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowImagePickerModal(false)}
+        >
+            <TouchableOpacity
+                style={styles.imagePickerOverlay}
+                activeOpacity={1}
+                onPress={() => setShowImagePickerModal(false)}
+            >
+                <View style={styles.imagePickerModalContent}>
+                    <View style={styles.imagePickerModalHandle} />
+
+                    <Text style={styles.imagePickerModalTitle}>Change Profile Picture</Text>
+                    <Text style={styles.imagePickerModalSubtitle}>Choose how you want to update your profile photo</Text>
+
+                    <View style={styles.imagePickerOptions}>
+                        {/* Camera Option */}
+                        <TouchableOpacity
+                            style={styles.imagePickerOption}
+                            onPress={() => {
+                                setShowImagePickerModal(false);
+
+                                setTimeout(() => {
+                                    openSelfieCamera();
+                                }, 300);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.imagePickerOptionIcon, { backgroundColor: '#FF8C0015' }]}>
+                                <Image
+                                    source={require('../../asset/camera.png')}
+                                    style={{
+                                        width: 32,
+                                        height: 32,
+                                        tintColor: '#FF8C00',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                            <Text style={styles.imagePickerOptionTitle}>Camera</Text>
+                            <Text style={styles.imagePickerOptionDesc}>Take a photo with your camera</Text>
+                            <View style={styles.imagePickerOptionArrow}>
+                                <Image
+                                    source={require('../../asset/arrow-forward.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: '#CCC',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Gallery Option */}
+                        <TouchableOpacity
+                            style={styles.imagePickerOption}
+                            onPress={() => {
+                                setShowImagePickerModal(false);
+
+                                setTimeout(() => {
+                                    openProfileGallery();
+                                }, 300);
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.imagePickerOptionIcon, { backgroundColor: '#0984E315' }]}>
+                                <Image
+                                    source={require('../../asset/attach.png')}
+                                    style={{
+                                        width: 32,
+                                        height: 32,
+                                        tintColor: '#0984E3',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                            <Text style={styles.imagePickerOptionTitle}>Gallery</Text>
+                            <Text style={styles.imagePickerOptionDesc}>Choose from your gallery</Text>
+                            <View style={styles.imagePickerOptionArrow}>
+                                <Image
+                                    source={require('../../asset/arrow-forward.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: '#CCC',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Remove Photo Option */}
+                        <TouchableOpacity
+                            style={[styles.imagePickerOption, styles.imagePickerRemoveOption]}
+                            onPress={() => {
+                                setShowImagePickerModal(false);
+                                Alert.alert(
+                                    'Remove Photo',
+                                    'Are you sure you want to remove your profile photo?',
+                                    [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                            text: 'Remove',
+                                            style: 'destructive',
+                                            onPress: () => {
+                                                setProfileImage('https://ui-avatars.com/api/?name=Rajesh+Kumar&background=FF8C00&color=fff&size=100');
+                                                Alert.alert('Success', 'Profile photo removed successfully!');
+                                            }
+                                        }
+                                    ]
+                                );
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[styles.imagePickerOptionIcon, { backgroundColor: '#E1705515' }]}>
+                                <Image
+                                    source={require('../../asset/bin.png')}
+                                    style={{
+                                        width: 28,
+                                        height: 28,
+                                        tintColor: '#E17055',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                            <Text style={[styles.imagePickerOptionTitle, { color: '#E17055' }]}>Remove Photo</Text>
+                            <Text style={[styles.imagePickerOptionDesc, { color: '#E17055' }]}>Remove your current profile photo</Text>
+                            <View style={styles.imagePickerOptionArrow}>
+                                <Image
+                                    source={require('../../asset/arrow-forward.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: '#E17055',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </View>
+                        </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity
+                        style={styles.imagePickerCancelButton}
+                        onPress={() => setShowImagePickerModal(false)}
+                    >
+                        <Text style={styles.imagePickerCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                </View>
+            </TouchableOpacity>
+        </Modal>
+    );
+
+
+    const renderLocationModal = () => (
+        <Modal
+            visible={showLocationModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowLocationModal(false)}
+        >
+            <View style={styles.locationModalOverlay}>
+                <View style={styles.locationModalContent}>
+                    <View style={styles.locationModalHandle} />
+                    <ScrollView
+                        style={styles.locationModalScroll}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        nestedScrollEnabled={true}
+                    >
+                        <View style={styles.locationModalHeader}>
+                            <Text style={styles.locationModalTitle}>Select Location</Text>
+                            <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+                                <Image
+                                    source={require('../../asset/close.png')}
+                                    style={{
+                                        width: 24,
+                                        height: 24,
+                                        tintColor: '#666',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </TouchableOpacity>
+                        </View>
+                    </ScrollView>
+
+
+                    {/* Search Input */}
+                    <View style={styles.locationSearchWrapper}>
+                        <Image
+                            source={require('../../asset/search.png')}
+                            style={{
+                                width: 20,
+                                height: 20,
+                                tintColor: '#999',
+                                resizeMode: 'contain',
+                                marginRight: 10,
+                            }}
+                        />
+                        <TextInput
+                            style={styles.locationSearchInput}
+                            placeholder="Search location..."
+                            placeholderTextColor="#999"
+                            value={searchLocationText}
+                            onChangeText={searchLocationPlaces}
+                            autoCorrect={false}
+                            autoCapitalize="none"
+                            returnKeyType="search"
+                            clearButtonMode="while-editing"
+                        />
+                        {isSearchingLocation && (
+                            <ActivityIndicator size="small" color="#FF8C00" style={{ marginLeft: 8 }} />
+                        )}
+                        {searchLocationText.length > 0 && !isSearchingLocation && (
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setSearchLocationText('');
+                                    setLocationSuggestions([]);
+                                    setShowLocationSuggestions(false);
+                                }}
+                                style={{ marginLeft: 8 }}
+                            >
+                                <Image
+                                    source={require('../../asset/edit.png')}
+                                    style={{
+                                        width: 20,
+                                        height: 20,
+                                        tintColor: '#999',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* Location Suggestions */}
+                    {showLocationSuggestions && locationSuggestions.length > 0 && (
+                        <View style={styles.locationSuggestionsContainer}>
+                            <ScrollView
+                                style={styles.locationSuggestionsList}
+                                nestedScrollEnabled={true}
+                                keyboardShouldPersistTaps="handled"
+                                showsVerticalScrollIndicator={true}
+                            >
+                                {locationSuggestions.map((item, index) => (
+                                    <TouchableOpacity
+                                        key={`${item.place_id}-${index}`}
+                                        style={styles.locationSuggestionItem}
+                                        onPress={() => handleLocationSelect(item)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={styles.locationSuggestionIconContainer}>
+                                            <Image
+                                                source={require('../../asset/location-outline.png')}
+                                                style={{
+                                                    width: 18,
+                                                    height: 18,
+                                                    tintColor: '#FF8C00',
+                                                    resizeMode: 'contain',
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={styles.locationSuggestionTextContainer}>
+                                            <Text style={styles.locationSuggestionTitle} numberOfLines={1}>
+                                                {item.structured_formatting?.main_text || item.description}
+                                            </Text>
+                                            <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
+                                                {item.structured_formatting?.secondary_text || ''}
+                                            </Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+
+                    {/* Map View */}
+                    {/* Map View */}
+                    <View style={styles.locationMapContainer}>
+                        {tempLatitude && tempLongitude ? (
+                            <MapView
+                                style={styles.locationMap}
+                                region={mapRegion || {
+                                    latitude: tempLatitude,
+                                    longitude: tempLongitude,
+                                    latitudeDelta: 0.005,
+                                    longitudeDelta: 0.005,
+                                }}
+                                onRegionChangeComplete={(region) => {
+                                    // Only update when region changes significantly
+                                    const latDiff = Math.abs(region.latitude - tempLatitude);
+                                    const lngDiff = Math.abs(region.longitude - tempLongitude);
+                                    if (latDiff > 0.0001 || lngDiff > 0.0001) {
+                                        setTempLatitude(region.latitude);
+                                        setTempLongitude(region.longitude);
+                                        setMapRegion(region);
+                                    }
+                                }}
+                                showsUserLocation={true}
+                                showsMyLocationButton={true}
+                                zoomEnabled={true}
+                                scrollEnabled={true}
+                                onMapReady={() => {
+                                    console.log('Map ready');
+                                }}
+                            >
+                                <Marker
+                                    coordinate={{
+                                        latitude: tempLatitude,
+                                        longitude: tempLongitude,
+                                    }}
+                                    title="Selected Location"
+                                    description={tempLocation || 'Your location'}
+                                    draggable
+                                    onDragEnd={(e) => {
+                                        const { latitude, longitude } = e.nativeEvent.coordinate;
+                                        setTempLatitude(latitude);
+                                        setTempLongitude(longitude);
+                                        // Update map region
+                                        setMapRegion({
+                                            latitude: latitude,
+                                            longitude: longitude,
+                                            latitudeDelta: 0.005,
+                                            longitudeDelta: 0.005,
+                                        });
+                                        // Reverse geocode
+                                        reverseGeocodeLocation(latitude, longitude);
+                                    }}
+                                />
+                            </MapView>
+                        ) : (
+                            <View style={styles.locationMapLoading}>
+                                <ActivityIndicator size="large" color="#FF8C00" />
+                                <Text style={styles.locationMapLoadingText}>Loading map...</Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Location Details */}
+                    {tempLocation && (
+                        <View style={styles.locationDetailsCard}>
+                            <View style={styles.locationDetailRow}>
+                                <Image
+                                    source={require('../../asset/location-outline.png')}
+                                    style={{
+                                        width: 18,
+                                        height: 18,
+                                        tintColor: '#FF8C00',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                                <Text style={styles.locationDetailText} numberOfLines={2}>
+                                    {tempLocation}
+                                </Text>
+                            </View>
+                            {tempArea && (
+                                <View style={styles.locationDetailRow}>
+                                    <Image
+                                        source={require('../../asset/location-outline.png')}
+                                        style={{
+                                            width: 16,
+                                            height: 16,
+                                            tintColor: '#999',
+                                            resizeMode: 'contain',
+                                        }}
+                                    />
+                                    <Text style={styles.locationDetailSubText}>
+                                        Area: {tempArea} {tempPincode ? `• ${tempPincode}` : ''}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Action Buttons */}
+                    <View style={styles.locationModalActions}>
+                        <TouchableOpacity
+                            style={[styles.locationModalButton, styles.locationCurrentButton]}
+                            onPress={fetchCurrentLocationForModal}
+                            disabled={isFetchingLocation}
+                        >
+                            <Image
+                                source={require('../../asset/location-outline.png')}
+                                style={{
+                                    width: 18,
+                                    height: 18,
+                                    tintColor: '#FF8C00',
+                                    resizeMode: 'contain',
+                                }}
+                            />
+                            <Text style={styles.locationCurrentButtonText}>
+                                {isFetchingLocation ? 'Getting...' : 'Current Location'}
+                            </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.locationModalButton, styles.locationSaveButton]}
+                            onPress={handleSaveLocationFromModal}
+                        >
+                            <Text style={styles.locationSaveButtonText}>Save Location</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+    );
 
     const renderSkillBottomSheet = () => (
         <Modal
@@ -891,411 +2490,509 @@ const ProfileScreen = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor={ORANGE_COLOR} />
-
-            {/* Curved Orange Toolbar */}
-            <Animated.View
-                style={[
-                    styles.toolbarContainer,
-                    {
-                        opacity: headerOpacity,
-                        transform: [{ translateY: headerTranslateY }],
-                        backgroundColor: ORANGE_COLOR,
-                    }
-                ]}
-            >
-                <View style={styles.toolbarContent}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarBack}>
-                        <Image
-                            source={require('../../asset/arrow-back.png')}
-                            style={{
-                                width: 24,
-                                height: 24,
-                                tintColor: "#FFFFFF",
-                            }}
-                        />
-                    </TouchableOpacity>
-                    <View style={styles.toolbarCenter}>
-                        <Text style={styles.toolbarTitle}>My Profile</Text>
-                    </View>
-                    <View style={styles.toolbarPlaceholder} />
+            {isProfileLoading ? (
+                <View style={styles.profileLoadingContainer}>
+                    <ActivityIndicator
+                        size="large"
+                        color={ORANGE_COLOR}
+                    />
+                    <Text style={styles.profileLoadingText}>
+                        Loading profile...
+                    </Text>
                 </View>
-                <View style={[styles.toolbarCurve, { backgroundColor: ORANGE_COLOR }]} />
-            </Animated.View>
-
-            <Animated.ScrollView
-                style={styles.container}
-                showsVerticalScrollIndicator={false}
-                scrollEventThrottle={16}
-                onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                    { useNativeDriver: false }
-                )}
-                contentContainerStyle={styles.scrollContent}
-            >
-                {/* Profile Image Section */}
-                <Animated.View
-                    style={[
-                        styles.profileImageSection,
-                        {
-                            opacity: fadeAnim,
-                            transform: [{ translateY: slideAnim }],
-                        }
-                    ]}
-                >
-                    <View style={styles.profileImageContainer}>
-                        <View style={styles.profileImageWrapper}>
-                            <Image source={{ uri: profileImage }} style={styles.profileImage} />
-                            <View style={styles.profileImageOverlay} />
+            ) : (
+                <>
+                    {/* Curved Orange Toolbar */}
+                    <Animated.View
+                        style={[
+                            styles.toolbarContainer,
+                            {
+                                opacity: headerOpacity,
+                                transform: [{ translateY: headerTranslateY }],
+                                backgroundColor: ORANGE_COLOR,
+                            }
+                        ]}
+                    >
+                        <View style={styles.toolbarContent}>
+                            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarBack}>
+                                <Image
+                                    source={require('../../asset/arrow-back.png')}
+                                    style={{
+                                        width: 24,
+                                        height: 24,
+                                        tintColor: "#FFFFFF",
+                                    }}
+                                />
+                            </TouchableOpacity>
+                            <View style={styles.toolbarCenter}>
+                                <Text style={styles.toolbarTitle}>My Profile</Text>
+                            </View>
+                            <View style={styles.toolbarPlaceholder} />
                         </View>
-                        <TouchableOpacity
-                            style={styles.editImageButton}
-                            onPress={handleImagePicker}
-                        >
-                            <Image
-                                source={require('../../asset/camera.png')}
-                                style={{
-                                    width: 20,
-                                    height: 20,
-                                    tintColor: "#FFFFFF",
-                                }}
-                            />
-                        </TouchableOpacity>
-                    </View>
-                    <Text style={styles.profileName}>{firstName} {lastName}</Text>
-                    <View style={styles.ratingContainer}>
-                        {renderStars(rating)}
-                        <Text style={styles.ratingText}>{rating}</Text>
-                    </View>
-                </Animated.View>
+                        <View style={[styles.toolbarCurve, { backgroundColor: ORANGE_COLOR }]} />
+                    </Animated.View>
 
-                {/* Profile Completion */}
-                <Animated.View style={[styles.completionCard, { opacity: fadeAnim }]}>
-                    <View style={styles.completionHeader}>
-                        <Text style={styles.completionTitle}>Profile Completion</Text>
-                        <Text style={styles.completionPercentage}>{completionPercentage}%</Text>
-                    </View>
-                    <View style={styles.progressBarContainer}>
+                    <Animated.ScrollView
+                        style={styles.container}
+                        showsVerticalScrollIndicator={false}
+                        scrollEventThrottle={16}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        contentContainerStyle={styles.scrollContent}
+                    >
+                        {/* Profile Image Section */}
                         <Animated.View
                             style={[
-                                styles.progressBarFill,
+                                styles.profileImageSection,
                                 {
-                                    width: progressAnim.interpolate({
-                                        inputRange: [0, 100],
-                                        outputRange: ['0%', '100%'],
-                                    }),
+                                    opacity: fadeAnim,
+                                    transform: [{ translateY: slideAnim }],
                                 }
                             ]}
-                        />
-                    </View>
-                    <Text style={styles.completionSubtext}>
-                        {completionPercentage < 100 ? 'Complete your profile to get more job opportunities' : 'Profile complete!'}
-                    </Text>
-                </Animated.View>
-
-                {/* Personal Information */}
-                <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-                    <Text style={styles.cardTitle}>Personal Information</Text>
-
-                    {/* First Name - Read Only */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.fieldLabel}>First Name</Text>
-                        <Text style={styles.fieldValue}>{firstName}</Text>
-                    </View>
-
-                    {/* Last Name - Read Only */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.fieldLabel}>Last Name</Text>
-                        <Text style={styles.fieldValue}>{lastName}</Text>
-                    </View>
-
-                    {/* Mobile Number - Read Only */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.fieldLabel}>Mobile Number</Text>
-                        <Text style={styles.fieldValue}>{mobileNumber}</Text>
-                    </View>
-
-                    {/* Email - Read Only */}
-                    <View style={styles.fieldContainer}>
-                        <Text style={styles.fieldLabel}>Email ID</Text>
-                        <Text style={styles.fieldValue}>{email}</Text>
-                    </View>
-
-                    {/* Location - Editable Item */}
-                    <View style={styles.fieldContainer}>
-                        <View style={styles.fieldHeader}>
-                            <Text style={styles.fieldLabel}>Location</Text>
-                            {!isEditingLocation && (
-                                <TouchableOpacity onPress={handleEditLocation}>
-                                    <Image
-                                        source={require('../../asset/edit.png')}
-                                        style={{
-                                            width: 18,
-                                            height: 18,
-                                            tintColor: '#FF8C00',
-                                            resizeMode: 'contain',
-                                        }}
-                                    />
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                        {isEditingLocation ? (
-                            <View style={styles.editFieldRow}>
-                                <TextInput
-                                    style={[styles.fieldInput, { flex: 1 }]}
-                                    value={location}
-                                    onChangeText={setLocation}
-                                    placeholder="Enter location"
-                                    placeholderTextColor="#999"
-                                    autoFocus
-                                />
-                                <TouchableOpacity
-                                    style={styles.saveEditButton}
-                                    onPress={handleSaveLocation}
-                                >
-                                    <Text style={styles.saveEditText}>Save</Text>
-                                </TouchableOpacity>
-                            </View>
-                        ) : (
-                            <Text style={styles.fieldValue}>{location}</Text>
-                        )}
-                    </View>
-
-                    {/* Experience - Editable Item */}
-                    <View style={styles.fieldContainer}>
-                        <View style={styles.fieldHeader}>
-                            <Text style={styles.fieldLabel}>Experience</Text>
-                            <TouchableOpacity onPress={() => setShowExperienceModal(true)}>
-                                <Image
-                                    source={require('../../asset/edit.png')}
-                                    style={{
-                                        width: 18,
-                                        height: 18,
-                                        tintColor: '#FF8C00',
-                                        resizeMode: 'contain',
-                                    }}
-                                />
-                            </TouchableOpacity>
-                        </View>
-                        <Text style={styles.fieldValue}>{experience}</Text>
-                    </View>
-                </Animated.View>
-
-                {/* Skills Section - Editable Items */}
-                <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-                    <View style={styles.skillsHeader}>
-                        <Text style={styles.cardTitle}>Skills</Text>
-                        <View style={styles.skillsHeaderActions}>
-                            <TouchableOpacity
-                                style={styles.skillHeaderButton}
-                                onPress={handleEditSkills}
-                            >
-                                <Image
-                                    source={require('../../asset/edit.png')}
-                                    style={{
-                                        width: 20,
-                                        height: 20,
-                                        tintColor: "#FF8C00",
-                                    }}
-                                />
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.skillHeaderButton}
-                                onPress={handleOpenSkillBottomSheet}
-                            >
-                                <Image
-                                    source={require('../../asset/add.png')}
-                                    style={{
-                                        width: 20,
-                                        height: 20,
-                                        tintColor: "#FF8C00",
-                                    }}
-                                />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                    <View style={styles.skillsContainer}>
-                        {skills.map((skill, index) => (
-                            <View key={index} style={styles.skillItem}>
-                                <Text style={styles.skillText}>{skill}</Text>
-                                <TouchableOpacity
-                                    style={styles.skillRemoveButton}
-                                    onPress={() => handleRemoveSkill(skill)}
-                                >
-                                    <Image
-                                        source={require('../../asset/close.png')}
-                                        style={{
-                                            width: 16,
-                                            height: 16,
-                                            tintColor: '#FF4444',
-                                            resizeMode: 'contain',
-                                        }}
-                                    />
-                                </TouchableOpacity>
-                            </View>
-                        ))}
-                        {skills.length === 0 && (
-                            <Text style={styles.noSkillsText}>No skills added. Tap + to add skills.</Text>
-                        )}
-                    </View>
-                </Animated.View>
-
-                {/* Uploaded Documents */}
-                <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
-                    <Text style={styles.cardTitle}>Uploaded Documents</Text>
-                    {uploadedDocuments.map((doc) => (
-                        <TouchableOpacity
-                            key={doc.id}
-                            style={styles.documentItem}
-                            onPress={() => handleViewDocument(doc)}
-                            activeOpacity={0.7}
                         >
-                            <View style={styles.documentLeft}>
-                                <View style={styles.documentIcon}>
+                            <View style={styles.profileImageContainer}>
+                                <View style={styles.profileImageWrapper}>
                                     <Image
-                                        source={doc.image}
+                                        source={
+                                            profileImage
+                                                ? { uri: profileImage }
+                                                : getGenderImage(gender)
+                                        }
+                                        style={styles.profileImage}
+                                    />
+                                    <View style={styles.profileImageOverlay} />
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.editImageButton}
+                                    onPress={() => setShowImagePickerModal(true)}
+                                >
+                                    <Image
+                                        source={require('../../asset/camera.png')}
                                         style={{
-                                            width: 22,
-                                            height: 22,
-                                            resizeMode: 'contain',
-                                            tintColor: "#FF8C00",
+                                            width: 20,
+                                            height: 20,
+                                            tintColor: "#FFFFFF",
                                         }}
                                     />
-                                </View>
-                                <View>
-                                    <Text style={styles.documentName}>{doc.name}</Text>
-                                    <Text style={styles.documentStatus}>
-                                        {doc.verified ? '✅ Verified' : doc.uploaded ? '⏳ Pending Verification' : doc.refNumber ? '📤 Ready to Upload' : '📝 Not uploaded yet'}
-                                    </Text>
-                                </View>
-                            </View>
-                            <View style={styles.documentRight}>
-                                {doc.verified && (
-                                    <View style={styles.verifiedBadge}>
-                                        <Image
-                                            source={require('../../asset/checked.png')}
-                                            style={{
-                                                width: 20,
-                                                height: 20,
-                                                tintColor: "#4CAF50",
-                                            }}
-                                        />
-                                    </View>
-                                )}
-                                <Image
-                                    source={require('../../asset/arrow-forward.png')}
-                                    style={{
-                                        width: 16,
-                                        height: 16,
-                                        tintColor: '#999',
-                                        resizeMode: 'contain',
-                                    }}
-                                />
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-                </Animated.View>
-
-                {/* Add Skill Modal */}
-                <Modal
-                    visible={showAddSkill}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowAddSkill(false)}
-                >
-                    <TouchableOpacity
-                        style={styles.modalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setShowAddSkill(false)}
-                    >
-                        <View style={styles.modalContent}>
-                            <Text style={styles.modalTitle}>Add New Skill</Text>
-                            <TextInput
-                                style={styles.modalInput}
-                                placeholder="Enter skill name"
-                                placeholderTextColor="#999"
-                                value={newSkill}
-                                onChangeText={setNewSkill}
-                                autoFocus
-                            />
-                            <View style={styles.modalButtons}>
-                                <TouchableOpacity
-                                    style={[styles.modalButton, styles.modalCancelButton]}
-                                    onPress={() => setShowAddSkill(false)}
-                                >
-                                    <Text style={styles.modalCancelText}>Cancel</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[styles.modalButton, styles.modalAddButton]}
-                                    onPress={handleAddSkill}
-                                >
-                                    <Text style={styles.modalAddText}>Add Skill</Text>
                                 </TouchableOpacity>
                             </View>
-                        </View>
-                    </TouchableOpacity>
-                </Modal>
+                            <Text style={styles.profileName}>{firstName} {lastName}</Text>
+                            <View style={styles.ratingContainer}>
+                                {renderStars(rating)}
+                                <Text style={styles.ratingText}>{rating}</Text>
+                            </View>
+                        </Animated.View>
 
-                {/* Experience Selection Modal */}
-                <Modal
-                    visible={showExperienceModal}
-                    transparent
-                    animationType="fade"
-                    onRequestClose={() => setShowExperienceModal(false)}
-                >
-                    <TouchableOpacity
-                        style={styles.modalOverlay}
-                        activeOpacity={1}
-                        onPress={() => setShowExperienceModal(false)}
-                    >
-                        <View style={styles.experienceModalContent}>
-                            <View style={styles.experienceModalHeader}>
-                                <Text style={styles.experienceModalTitle}>Select Experience</Text>
-                                <Text style={styles.experienceModalSubtitle}>
-                                    How many years of experience do you have?
+                        {/* Profile Completion */}
+                        <Animated.View
+                            style={[
+                                styles.completionCard,
+                                { opacity: fadeAnim }
+                            ]}
+                        >
+                            <View style={styles.completionHeader}>
+                                <Text style={styles.completionTitle}>
+                                    Profile Completion
+                                </Text>
+
+                                <Text style={styles.completionPercentage}>
+                                    {completionPercentage}%
                                 </Text>
                             </View>
 
-                            <View style={styles.experienceGrid}>
-                                {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '10+'].map((year) => (
-                                    <TouchableOpacity
-                                        key={year}
-                                        style={[
-                                            styles.experienceOption,
-                                            experienceYears === year && styles.experienceOptionSelected,
-                                        ]}
-                                        onPress={() => {
-                                            setExperienceYears(year);
-                                            setExperience(year === '10+' ? '10+ years' : `${year} years`);
-                                            setShowExperienceModal(false);
-                                        }}
-                                    >
-                                        <Text style={[
-                                            styles.experienceOptionText,
-                                            experienceYears === year && styles.experienceOptionTextSelected,
-                                        ]}>
-                                            {year}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
+                            <View style={styles.progressBarContainer}>
+                                <Animated.View
+                                    style={[
+                                        styles.progressBarFill,
+                                        {
+                                            width: progressAnim.interpolate({
+                                                inputRange: [0, 100],
+                                                outputRange: ['0%', '100%'],
+                                            }),
+                                        },
+                                    ]}
+                                />
                             </View>
 
+                            <Text style={styles.completionSubtext}>
+                                {completionPercentage < 100
+                                    ? 'Complete your profile to get more job opportunities'
+                                    : 'Profile complete!'}
+                            </Text>
+                        </Animated.View>
+
+                        {/* Personal Information */}
+                        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+                            <Text style={styles.cardTitle}>Personal Information</Text>
+
+                            {/* First Name - Read Only */}
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>First Name</Text>
+                                <Text style={styles.fieldValue}>{firstName}</Text>
+                            </View>
+
+                            {/* Last Name - Read Only */}
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>Last Name</Text>
+                                <Text style={styles.fieldValue}>{lastName}</Text>
+                            </View>
+
+                            {/* Mobile Number - Read Only */}
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>Mobile Number</Text>
+                                <Text style={styles.fieldValue}>{mobileNumber}</Text>
+                            </View>
+
+                            {/* Email - Read Only */}
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>Email ID</Text>
+                                <Text style={styles.fieldValue}>{email}</Text>
+                            </View>
+
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>Gender</Text>
+                                <Text style={styles.fieldValue}>{gender}</Text>
+                            </View>
+
+                            <View style={styles.fieldContainer}>
+                                <Text style={styles.fieldLabel}>Date Of Birth</Text>
+                                <Text style={styles.fieldValue}>{dob}</Text>
+                            </View>
+
+                            {/* Location - Editable Item */}
+                            <View style={styles.fieldContainer}>
+                                <View style={styles.fieldHeader}>
+                                    <Text style={styles.fieldLabel}>Preferable Service Location</Text>
+                                    <TouchableOpacity onPress={handleEditLocation} style={styles.editIconButton}>
+                                        <Image
+                                            source={require('../../asset/edit.png')}
+                                            style={{
+                                                width: 18,
+                                                height: 18,
+                                                tintColor: '#FF8C00',
+                                                resizeMode: 'contain',
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                                <Text style={styles.fieldValue}>{location}</Text>
+                            </View>
+
+                            {/* Experience - Editable Item */}
+                            <View style={styles.fieldContainer}>
+                                <View style={styles.fieldHeader}>
+                                    <Text style={styles.fieldLabel}>Experience</Text>
+                                    <TouchableOpacity onPress={() => setShowExperienceModal(true)}>
+                                        <Image
+                                            source={require('../../asset/edit.png')}
+                                            style={{
+                                                width: 18,
+                                                height: 18,
+                                                tintColor: '#FF8C00',
+                                                resizeMode: 'contain',
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                                <Text style={styles.fieldValue}>{experience}</Text>
+                            </View>
+                        </Animated.View>
+
+                        {/* Skills Section - Editable Items */}
+                        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+                            <View style={styles.skillsHeader}>
+                                <Text style={styles.cardTitle}>Skills</Text>
+                                <View style={styles.skillsHeaderActions}>
+                                    <TouchableOpacity
+                                        style={styles.skillHeaderButton}
+                                        onPress={handleEditSkills}
+                                    >
+                                        <Image
+                                            source={require('../../asset/edit.png')}
+                                            style={{
+                                                width: 20,
+                                                height: 20,
+                                                tintColor: "#FF8C00",
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={styles.skillHeaderButton}
+                                        onPress={handleOpenSkillBottomSheet}
+                                    >
+                                        <Image
+                                            source={require('../../asset/add.png')}
+                                            style={{
+                                                width: 20,
+                                                height: 20,
+                                                tintColor: "#FF8C00",
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                            <View style={styles.skillsContainer}>
+                                {skills.map((skill, index) => (
+                                    <View key={index} style={styles.skillItem}>
+                                        <Text style={styles.skillText}>{skill}</Text>
+                                        <TouchableOpacity
+                                            style={styles.skillRemoveButton}
+                                            onPress={() => handleRemoveSkill(skill)}
+                                        >
+                                            <Image
+                                                source={require('../../asset/close.png')}
+                                                style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    tintColor: '#FF4444',
+                                                    resizeMode: 'contain',
+                                                }}
+                                            />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                                {skills.length === 0 && (
+                                    <Text style={styles.noSkillsText}>No skills added. Tap + to add skills.</Text>
+                                )}
+                            </View>
+                        </Animated.View>
+
+                        {/* Uploaded Documents */}
+                        <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+                            <Text style={styles.cardTitle}>Uploaded Documents</Text>
+                            {uploadedDocuments.map((doc) => (
+                                <TouchableOpacity
+                                    key={doc.id}
+                                    style={styles.documentItem}
+                                    onPress={() => {
+                                        if (!isDocumentUploading) {
+                                            handleViewDocument(doc);
+                                        }
+                                    }}
+                                    activeOpacity={0.7}
+                                    disabled={
+                                        isDocumentUploading &&
+                                        uploadingDocId === doc.id
+                                    }
+                                >
+
+                                    <View style={styles.documentLeft}>
+
+                                        <View style={styles.documentIcon}>
+                                            <Image
+                                                source={doc.image}
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    resizeMode: 'contain',
+                                                    tintColor: '#FF8C00',
+                                                }}
+                                            />
+                                        </View>
+
+                                        <View style={{ flex: 1 }}>
+
+                                            <Text style={styles.documentName}>
+                                                {doc.name}
+                                            </Text>
+
+                                            {/* Normal status */}
+                                            {!(
+                                                isDocumentUploading &&
+                                                uploadingDocId === doc.id
+                                            ) && (
+                                                    <Text style={styles.documentStatus}>
+                                                        {doc.verified
+                                                            ? '✅ Verified'
+                                                            : doc.uploaded
+                                                                ? '⏳ Pending Verification'
+                                                                : doc.refNumber
+                                                                    ? '📤 Ready to Upload'
+                                                                    : '📝 Not uploaded yet'}
+                                                    </Text>
+                                                )}
+
+                                            {/* Upload Progress */}
+                                            {isDocumentUploading &&
+                                                uploadingDocId === doc.id && (
+                                                    <View style={styles.uploadProgressWrapper}>
+
+                                                        <View style={styles.uploadProgressHeader}>
+                                                            <Text style={styles.uploadProgressText}>
+                                                                Uploading...
+                                                            </Text>
+
+                                                            <Text style={styles.uploadProgressPercentage}>
+                                                                {documentUploadProgress}%
+                                                            </Text>
+                                                        </View>
+
+                                                        <View style={styles.uploadProgressBar}>
+                                                            <View
+                                                                style={[
+                                                                    styles.uploadProgressFill,
+                                                                    {
+                                                                        width: `${documentUploadProgress}%`,
+                                                                    },
+                                                                ]}
+                                                            />
+                                                        </View>
+
+                                                    </View>
+                                                )}
+
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.documentRight}>
+
+                                        {isDocumentUploading &&
+                                            uploadingDocId === doc.id ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color="#FF8C00"
+                                            />
+                                        ) : (
+                                            <>
+                                                {doc.verified && (
+                                                    <View style={styles.verifiedBadge}>
+                                                        <Image
+                                                            source={require('../../asset/checked.png')}
+                                                            style={{
+                                                                width: 20,
+                                                                height: 20,
+                                                                tintColor: '#4CAF50',
+                                                            }}
+                                                        />
+                                                    </View>
+                                                )}
+
+                                                <Image
+                                                    source={require('../../asset/arrow-forward.png')}
+                                                    style={{
+                                                        width: 16,
+                                                        height: 16,
+                                                        tintColor: '#999',
+                                                        resizeMode: 'contain',
+                                                    }}
+                                                />
+                                            </>
+                                        )}
+
+                                    </View>
+
+                                </TouchableOpacity>
+                            ))}
+                        </Animated.View>
+
+                        {/* Add Skill Modal */}
+                        <Modal
+                            visible={showAddSkill}
+                            transparent
+                            animationType="fade"
+                            onRequestClose={() => setShowAddSkill(false)}
+                        >
                             <TouchableOpacity
-                                style={styles.experienceCancelButton}
+                                style={styles.modalOverlay}
+                                activeOpacity={1}
+                                onPress={() => setShowAddSkill(false)}
+                            >
+                                <View style={styles.modalContent}>
+                                    <Text style={styles.modalTitle}>Add New Skill</Text>
+                                    <TextInput
+                                        style={styles.modalInput}
+                                        placeholder="Enter skill name"
+                                        placeholderTextColor="#999"
+                                        value={newSkill}
+                                        onChangeText={setNewSkill}
+                                        autoFocus
+                                    />
+                                    <View style={styles.modalButtons}>
+                                        <TouchableOpacity
+                                            style={[styles.modalButton, styles.modalCancelButton]}
+                                            onPress={() => setShowAddSkill(false)}
+                                        >
+                                            <Text style={styles.modalCancelText}>Cancel</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.modalButton, styles.modalAddButton]}
+                                            onPress={handleAddSkill}
+                                        >
+                                            <Text style={styles.modalAddText}>Add Skill</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </TouchableOpacity>
+                        </Modal>
+
+                        {/* Experience Selection Modal */}
+                        <Modal
+                            visible={showExperienceModal}
+                            transparent
+                            animationType="fade"
+                            onRequestClose={() => setShowExperienceModal(false)}
+                        >
+                            <TouchableOpacity
+                                style={styles.modalOverlay}
+                                activeOpacity={1}
                                 onPress={() => setShowExperienceModal(false)}
                             >
-                                <Text style={styles.experienceCancelText}>Cancel</Text>
+                                <View style={styles.experienceModalContent}>
+                                    <View style={styles.experienceModalHeader}>
+                                        <Text style={styles.experienceModalTitle}>Select Experience</Text>
+                                        <Text style={styles.experienceModalSubtitle}>
+                                            How many years of experience do you have?
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.experienceGrid}>
+                                        {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '10+'].map((year) => (
+                                            <TouchableOpacity
+                                                key={year}
+                                                style={[
+                                                    styles.experienceOption,
+                                                    experienceYears === year && styles.experienceOptionSelected,
+                                                ]}
+                                                onPress={() => {
+                                                    setExperienceYears(year);
+                                                    setExperience(year === '10+' ? '10+ years' : `${year} years`);
+                                                    setShowExperienceModal(false);
+                                                }}
+                                            >
+                                                <Text style={[
+                                                    styles.experienceOptionText,
+                                                    experienceYears === year && styles.experienceOptionTextSelected,
+                                                ]}>
+                                                    {year}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        ))}
+                                    </View>
+
+                                    <TouchableOpacity
+                                        style={styles.experienceCancelButton}
+                                        onPress={() => setShowExperienceModal(false)}
+                                    >
+                                        <Text style={styles.experienceCancelText}>Cancel</Text>
+                                    </TouchableOpacity>
+                                </View>
                             </TouchableOpacity>
-                        </View>
-                    </TouchableOpacity>
-                </Modal>
+                        </Modal>
 
-                {/* Document Modal */}
-                {renderDocumentModal()}
-                {renderRefNumberModal()}
-                {renderSkillBottomSheet()}
+                        {/* Document Modal */}
+                        {renderDocumentModal()}
+                        {renderRefNumberModal()}
+                        {renderSkillBottomSheet()}
+                        {renderLocationModal()}
+                        {renderImagePickerModal()}
 
-                <View style={{ height: 20 }} />
-            </Animated.ScrollView>
+                        <View style={{ height: 20 }} />
+                    </Animated.ScrollView>
+
+                </>
+            )}
         </SafeAreaView>
     );
 };
@@ -2348,6 +4045,369 @@ const styles = StyleSheet.create({
     skillRemoveButton: {
         padding: 2,
     },
+    locationModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    locationModalContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: 20,
+        maxHeight: height * 0.92,
+    },
+    locationModalHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#E0E0E0',
+        alignSelf: 'center',
+        marginBottom: 12,
+    },
+    locationModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    locationModalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#1A1A1A',
+    },
+
+
+    locationSuggestionsList: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        maxHeight: 150,
+        marginBottom: 8,
+        overflow: 'hidden',
+        elevation: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.08,
+        shadowRadius: 6,
+    },
+    locationSuggestionItem: {
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+    },
+    locationSuggestionTitle: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#1A1A1A',
+    },
+    locationSuggestionAddress: {
+        fontSize: 12,
+        color: '#888',
+        marginTop: 2,
+    },
+    locationMapContainer: {
+        height: 250,
+        borderRadius: 12,
+        overflow: 'hidden',
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        backgroundColor: '#F8F9FA',
+        marginBottom: 12,
+    },
+    locationMap: {
+        width: '100%',
+        height: '100%',
+    },
+    locationMapLoading: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    locationMapLoadingText: {
+        fontSize: 14,
+        color: '#888',
+        marginTop: 8,
+    },
+    locationDetailsCard: {
+        backgroundColor: '#FFF8F3',
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#FFE0CC',
+    },
+    locationDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 2,
+    },
+    locationDetailText: {
+        fontSize: 14,
+        color: '#1A1A1A',
+        fontWeight: '500',
+        flex: 1,
+    },
+    locationDetailSubText: {
+        fontSize: 12,
+        color: '#888',
+        flex: 1,
+    },
+    locationModalActions: {
+        flexDirection: 'row',
+        gap: 10,
+    },
+    locationModalButton: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        gap: 6,
+    },
+    locationCurrentButton: {
+        backgroundColor: '#F8F9FA',
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+    },
+    locationCurrentButtonText: {
+        color: '#FF8C00',
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    locationSaveButton: {
+        backgroundColor: '#FF8C00',
+        shadowColor: '#FF8C00',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    locationSaveButtonText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+    },
+    locationSuggestionsContainer: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+        maxHeight: 180,
+        marginBottom: 8,
+        overflow: 'hidden',
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        zIndex: 999,
+    },
+    locationSuggestionsList: {
+        maxHeight: 180,
+    },
+    locationSuggestionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F0F0F0',
+        backgroundColor: '#FFFFFF',
+    },
+    locationSuggestionIconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: '#FFF8F3',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+    locationSuggestionTextContainer: {
+        flex: 1,
+    },
+    locationSuggestionTitle: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#1A1A1A',
+    },
+    locationSuggestionAddress: {
+        fontSize: 12,
+        color: '#888',
+        marginTop: 1,
+    },
+
+    locationModalScroll: {
+        flex: 1,
+    },
+    locationSearchWrapper: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        marginBottom: 8,
+        zIndex: 1000,
+    },
+    locationSearchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#1A1A1A',
+        padding: 0,
+        height: 40,
+    },
+
+    imagePickerOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    imagePickerModalContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: 34,
+    },
+    imagePickerModalHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#E0E0E0',
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    imagePickerModalTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        textAlign: 'center',
+        marginBottom: 4,
+    },
+    imagePickerModalSubtitle: {
+        fontSize: 14,
+        color: '#888',
+        textAlign: 'center',
+        marginBottom: 20,
+    },
+    imagePickerOptions: {
+        gap: 12,
+    },
+    imagePickerOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        padding: 14,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    imagePickerRemoveOption: {
+        borderColor: '#FDEDEC',
+        backgroundColor: '#FFF5F5',
+    },
+    imagePickerOptionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 14,
+    },
+    imagePickerOptionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1A1A1A',
+        flex: 1,
+    },
+    imagePickerOptionDesc: {
+        fontSize: 12,
+        color: '#888',
+        position: 'absolute',
+        left: 76,
+        bottom: 10,
+    },
+    imagePickerOptionArrow: {
+        marginLeft: 'auto',
+    },
+    imagePickerCancelButton: {
+        backgroundColor: '#F5F5F5',
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    imagePickerCancelText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#666',
+    },
+
+    profileLoadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+    },
+
+    profileLoadingText: {
+        marginTop: 12,
+        fontSize: 14,
+        color: '#666',
+        fontWeight: '500',
+    },
+
+    uploadProgressWrapper: {
+        marginTop: 6,
+        width: '95%',
+    },
+
+    uploadProgressHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+
+    uploadProgressText: {
+        fontSize: 11,
+        color: '#888',
+        fontWeight: '500',
+    },
+
+    uploadProgressPercentage: {
+        fontSize: 11,
+        color: '#FF8C00',
+        fontWeight: '700',
+    },
+
+    uploadProgressBar: {
+        height: 6,
+        backgroundColor: '#EEEEEE',
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+
+    uploadProgressFill: {
+        height: '100%',
+        backgroundColor: '#FF8C00',
+        borderRadius: 3,
+    },
+
+
 });
 
 export default ProfileScreen;
