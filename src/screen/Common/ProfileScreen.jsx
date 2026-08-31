@@ -29,6 +29,7 @@ import {
     launchImageLibrary,
 } from 'react-native-image-picker';
 import axios from 'axios';
+import { Loader } from '../../util/Loader';
 
 const { width, height } = Dimensions.get('window');
 
@@ -40,6 +41,8 @@ const ProfileScreen = ({ navigation }) => {
     const [mobileNumber, setMobileNumber] = useState('');
     const [email, setEmail] = useState('');
     const [location, setLocation] = useState('');
+    const [area, setArea] = useState('');
+    const [pincode, setPincode] = useState('');
     const [isEditingLocation, setIsEditingLocation] = useState(false);
     const [experience, setExperience] = useState('');
     const [experienceYears, setExperienceYears] = useState('');
@@ -87,6 +90,11 @@ const ProfileScreen = ({ navigation }) => {
     const [uploadingDocId, setUploadingDocId] = useState(null);
     const GOOGLE_MAPS_API_KEY =
         'AIzaSyBuxUn1s4S2yv8fqwd0wGUTFegxNyASL1g'
+
+    const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+    const [profileUploadProgress, setProfileUploadProgress] = useState(0);
+    const [isEditingReferenceNumber, setIsEditingReferenceNumber] =
+        useState(false);
 
     // 5 Documents
     const [uploadedDocuments, setUploadedDocuments] = useState([
@@ -430,18 +438,17 @@ const ProfileScreen = ({ navigation }) => {
 
     const openSelfieCamera = async () => {
         try {
-            // Request camera permission
-            const hasPermission = await requestCameraPermission();
+            const hasPermission =
+                await requestCameraPermission();
 
             if (!hasPermission) {
                 Alert.alert(
                     'Camera Permission Required',
-                    'Please allow camera permission from your phone settings.'
+                    'Please allow camera permission.'
                 );
                 return;
             }
 
-            // Open FRONT camera
             const result = await launchCamera({
                 mediaType: 'photo',
                 cameraType: 'front',
@@ -451,8 +458,6 @@ const ProfileScreen = ({ navigation }) => {
                 saveToPhotos: false,
             });
 
-            console.log('Selfie Camera Result:', result);
-
             if (result.didCancel) {
                 return;
             }
@@ -460,7 +465,8 @@ const ProfileScreen = ({ navigation }) => {
             if (result.errorCode) {
                 Alert.alert(
                     'Camera Error',
-                    result.errorMessage || 'Unable to open camera.'
+                    result.errorMessage ||
+                    'Unable to capture photo.'
                 );
                 return;
             }
@@ -475,18 +481,18 @@ const ProfileScreen = ({ navigation }) => {
                 return;
             }
 
-            console.log('Captured Profile Image:', file);
+            // Show image immediately
+            // setProfileImage(file.uri);
 
-            // Show immediately on profile
-            setProfileImage(file.uri);
-
-            Alert.alert(
-                'Success',
-                'Profile photo captured successfully.'
-            );
+            // Upload profile photo
+            await updatePartnerProfile(file);
 
         } catch (error) {
-            console.log('Selfie camera error:', error);
+
+            console.log(
+                'Selfie camera error:',
+                error
+            );
 
             Alert.alert(
                 'Camera Error',
@@ -506,8 +512,6 @@ const ProfileScreen = ({ navigation }) => {
                 maxHeight: 1000,
             });
 
-            console.log('Profile Gallery Result:', result);
-
             if (result.didCancel) {
                 return;
             }
@@ -515,7 +519,8 @@ const ProfileScreen = ({ navigation }) => {
             if (result.errorCode) {
                 Alert.alert(
                     'Gallery Error',
-                    result.errorMessage || 'Unable to open gallery.'
+                    result.errorMessage ||
+                    'Unable to select image.'
                 );
                 return;
             }
@@ -530,14 +535,22 @@ const ProfileScreen = ({ navigation }) => {
                 return;
             }
 
-            setProfileImage(file.uri);
+            // Show image immediately
+
+
+            // Upload to API
+            await updatePartnerProfile(file);
 
         } catch (error) {
-            console.log('Profile gallery error:', error);
+
+            console.log(
+                'Profile gallery error:',
+                error
+            );
 
             Alert.alert(
                 'Gallery Error',
-                'Unable to select profile photo.'
+                'Unable to select image.'
             );
         }
     };
@@ -558,6 +571,165 @@ const ProfileScreen = ({ navigation }) => {
         locationSearchTimeout.current = setTimeout(() => {
             searchGooglePlaces(text.trim());
         }, 700);
+    };
+
+
+    const updatePartnerProfile = async (profilePhotoFile = null) => {
+        try {
+            setIsUpdatingProfile(true);
+            setProfileUploadProgress(0);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return false;
+            }
+
+            const formData = new FormData();
+
+            // Profile Photo
+            if (profilePhotoFile?.uri) {
+                formData.append('ProfilePhoto', {
+                    uri: profilePhotoFile.uri,
+                    name:
+                        profilePhotoFile.fileName ||
+                        profilePhotoFile.name ||
+                        `profile_${Date.now()}.jpg`,
+                    type:
+                        profilePhotoFile.type ||
+                        'image/jpeg',
+                });
+            }
+
+            // Other profile data
+            formData.append(
+                'Latitude',
+                tempLatitude
+            );
+
+            formData.append(
+                'Longitude',
+                tempLongitude
+            );
+
+            formData.append(
+                'ExperienceYears',
+                String(experienceYears || 0)
+            );
+
+            formData.append(
+                'PreferredArea',
+                area || ''
+            );
+
+            formData.append(
+                'PreferredAreaAddress',
+                location || ''
+            );
+
+            formData.append(
+                'PreferredAreaPINcode',
+                pincode || ''
+            );
+
+            console.log(
+                'Updating Partner Profile:',
+                {
+                    Latitude: tempLatitude,
+                    Longitude: tempLongitude,
+                    ExperienceYears: experienceYears,
+                    PreferredArea: area,
+                    PreferredAreaAddress: location,
+                    PreferredAreaPINcode: pincode,
+                    HasProfilePhoto: !!profilePhotoFile?.uri,
+                }
+            );
+
+            const response = await axios.put(
+                API.PARTNER_PROFILE,
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data',
+                        Accept: '*/*',
+                    },
+
+                    // Upload Progress
+                    onUploadProgress: progressEvent => {
+                        if (progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) /
+                                progressEvent.total
+                            );
+
+                            console.log(
+                                'Profile Upload Progress:',
+                                progress
+                            );
+
+                            setProfileUploadProgress(progress);
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Update Profile Response:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+
+                setProfileUploadProgress(100);
+                setProfileImage(profilePhotoFile.uri);
+
+                await fetchProfile();
+
+                Alert.alert(
+                    'Success',
+                    response.data?.message ||
+                    'Profile updated successfully.'
+                );
+
+                return true;
+            }
+
+            Alert.alert(
+                'Update Failed',
+                response.data?.message ||
+                'Unable to update profile.'
+            );
+
+            return false;
+
+        } catch (error) {
+
+            console.log(
+                'Update Profile Error:',
+                error?.response?.data || error.message
+            );
+
+            Alert.alert(
+                'Update Failed',
+                error?.response?.data?.message ||
+                'Something went wrong while updating profile.'
+            );
+
+            return false;
+
+        } finally {
+
+            setIsUpdatingProfile(false);
+
+            setTimeout(() => {
+                setProfileUploadProgress(0);
+            }, 500);
+        }
     };
 
 
@@ -614,7 +786,9 @@ const ProfileScreen = ({ navigation }) => {
             setDob(formatDob(data.dob));
             const preferredLocation =
                 `${data.preferredArea || ''}, ${data.preferredAreaPINcode || ''}`;
-            setLocation(preferredLocation)
+            setLocation(data.preferredAreaAddress)
+            setArea(data.preferredArea)
+            setPincode(data.preferredArea)
             setProfileCompleteness(
                 Number(data.profileCompletenessPercentage || 0)
             );
@@ -879,7 +1053,7 @@ const ProfileScreen = ({ navigation }) => {
             const documentTypeMap = {
                 'Aadhar Card': 'Aadhaar Card',
                 'Aadhaar Card': 'Aadhaar Card',
-                'PAN Card': 'PANCard',
+                'PAN Card': 'PAN Card',
                 'Passport': 'Passport',
                 'Bank Passbook': 'Bank Passbook',
                 'Driving License': 'Driving License',
@@ -1396,6 +1570,8 @@ const ProfileScreen = ({ navigation }) => {
 
                 if (updateMainLocation) {
                     setLocation(address);
+                    setArea(selectedArea);
+                    setPincode(selectedPincode);
                 }
             }
 
@@ -1503,6 +1679,8 @@ const ProfileScreen = ({ navigation }) => {
             return;
         }
         setLocation(tempLocation);
+        setArea(tempArea);
+        setPincode(tempPincode);
         setShowLocationModal(false);
         Alert.alert('Success', 'Location updated successfully!');
     };
@@ -1641,26 +1819,636 @@ const ProfileScreen = ({ navigation }) => {
         }, 300);
     };
 
-    const handleEditDocument = (docId) => {
+    // const handleEditDocument = (docId) => {
+    //     Alert.alert(
+    //         'Edit Document',
+    //         'Enter document number',
+    //         [
+    //             { text: 'Cancel', style: 'cancel' },
+    //             {
+    //                 text: 'Save',
+    //                 onPress: () => {
+    //                     const updatedDocs = uploadedDocuments.map(doc =>
+    //                         doc.id === docId ? { ...doc, documentNumber: 'Updated Number' } : doc
+    //                     );
+    //                     setUploadedDocuments(updatedDocs);
+    //                     Alert.alert('Success', 'Document updated successfully!');
+    //                 }
+    //             }
+    //         ]
+    //     );
+    // };
+
+
+
+    const handleEditDocument = (doc) => {
+        // Verified document cannot be edited
+        if (
+            doc?.verificationStatus?.toLowerCase() ===
+            'verified'
+        ) {
+            Alert.alert(
+                'Document Verified',
+                'This document has already been verified and cannot be edited.'
+            );
+            return;
+        }
+
         Alert.alert(
             'Edit Document',
-            'Enter document number',
+            `What would you like to change for ${doc.name || doc.documentType}?`,
             [
-                { text: 'Cancel', style: 'cancel' },
                 {
-                    text: 'Save',
+                    text: 'Change Reference Number',
                     onPress: () => {
-                        const updatedDocs = uploadedDocuments.map(doc =>
-                            doc.id === docId ? { ...doc, documentNumber: 'Updated Number' } : doc
-                        );
-                        setUploadedDocuments(updatedDocs);
-                        Alert.alert('Success', 'Document updated successfully!');
-                    }
-                }
+                        handleChangeReferenceNumber(doc);
+                    },
+                },
+                {
+                    text: 'Change Document',
+                    onPress: () => {
+                        handleChangeDocument(doc);
+                    },
+                },
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
             ]
         );
     };
 
+
+    const handleChangeReferenceNumber = (doc) => {
+        setSelectedDocument(doc);
+
+        setTempRefNumber(
+            doc.documentNo ||
+            doc.refNumber ||
+            ''
+        );
+
+        setIsEditingReferenceNumber(true);
+
+        setShowRefNumberModal(true);
+    };
+
+
+    const handleUpdateReferenceNumber = async () => {
+        if (!selectedDocument) {
+            return;
+        }
+
+        const referenceNumber =
+            tempRefNumber.trim().toUpperCase();
+
+        if (!referenceNumber) {
+            Alert.alert(
+                'Required',
+                'Please enter reference number.'
+            );
+            return;
+        }
+
+        const validationError =
+            validateDocumentNumber(
+                selectedDocument.documentType ||
+                selectedDocument.name,
+                referenceNumber
+            );
+
+        if (validationError) {
+            Alert.alert(
+                'Invalid Reference Number',
+                validationError
+            );
+            return;
+        }
+
+        setShowRefNumberModal(false);
+
+        /*
+         * For reference-number-only update,
+         * we still need to send a File because
+         * your API multipart contract includes File.
+         *
+         * Use existing document file if available,
+         * otherwise backend API should support optional File.
+         */
+
+        handleEditDocumentUpload(
+            selectedDocument,
+            null,
+            referenceNumber
+        );
+    };
+
+
+    const handleChangeDocument = (doc) => {
+        setSelectedDocument(doc);
+
+        Alert.alert(
+            'Change Document',
+            'Select document source',
+            [
+                {
+                    text: 'Camera',
+                    onPress: () => {
+                        setTimeout(() => {
+                            openEditDocumentCamera(doc);
+                        }, 300);
+                    },
+                },
+                {
+                    text: 'File / Gallery',
+                    onPress: () => {
+                        setTimeout(() => {
+                            openEditDocumentGallery(doc);
+                        }, 300);
+                    },
+                },
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+            ]
+        );
+    };
+
+
+    const openEditDocumentCamera = async (doc) => {
+        try {
+            const hasPermission =
+                await requestCameraPermission();
+
+            if (!hasPermission) {
+                Alert.alert(
+                    'Permission Required',
+                    'Camera permission is required.'
+                );
+                return;
+            }
+
+            const result = await launchCamera({
+                mediaType: 'photo',
+                quality: 0.8,
+                maxWidth: 2000,
+                maxHeight: 2000,
+                saveToPhotos: false,
+            });
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Camera Error',
+                    result.errorMessage ||
+                    'Unable to capture document.'
+                );
+                return;
+            }
+
+            const file = result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to capture document.'
+                );
+                return;
+            }
+
+            // Update document using existing reference number
+            await handleEditDocumentUpload(
+                doc,
+                file,
+                doc.documentNo || doc.refNumber
+            );
+
+        } catch (error) {
+            console.log(
+                'Document camera error:',
+                error
+            );
+
+            Alert.alert(
+                'Camera Error',
+                'Unable to capture document.'
+            );
+        }
+    };
+
+    const openEditDocumentGallery = async (doc) => {
+        try {
+            const result = await launchImageLibrary({
+                mediaType: 'photo',
+                selectionLimit: 1,
+                quality: 0.8,
+            });
+
+            if (result.didCancel) {
+                return;
+            }
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'File Error',
+                    result.errorMessage ||
+                    'Unable to select document.'
+                );
+                return;
+            }
+
+            const file = result.assets?.[0];
+
+            if (!file?.uri) {
+                Alert.alert(
+                    'Error',
+                    'Unable to select document.'
+                );
+                return;
+            }
+
+            await handleEditDocumentUpload(
+                doc,
+                file,
+                doc.documentNo || doc.refNumber
+            );
+
+        } catch (error) {
+            console.log(
+                'Document gallery error:',
+                error
+            );
+
+            Alert.alert(
+                'File Error',
+                'Unable to select document.'
+            );
+        }
+    };
+
+    // const handleEditDocumentUpload = async (
+    //     doc,
+    //     file,
+    //     referenceNumber
+    // ) => {
+    //     try {
+    //         const token =
+    //             await AsyncStorage.getItem('token');
+
+    //         if (!token) {
+    //             Alert.alert(
+    //                 'Session Expired',
+    //                 'Please login again.'
+    //             );
+    //             return false;
+    //         }
+
+    //         const documentId =
+    //             doc.documentId;
+
+    //         if (!documentId) {
+    //             Alert.alert(
+    //                 'Error',
+    //                 'Document ID not found.'
+    //             );
+    //             return false;
+    //         }
+
+    //         const formData = new FormData();
+
+    //         formData.append(
+    //             'DocumentType',
+    //             doc.documentType || doc.name
+    //         );
+
+    //         formData.append(
+    //             'DocumentNo',
+    //             referenceNumber.trim().toUpperCase()
+    //         );
+
+    //         // Only append file when changing document
+    //         if (file?.uri) {
+    //             formData.append('File', {
+    //                 uri: file.uri,
+    //                 name:
+    //                     file.fileName ||
+    //                     file.name ||
+    //                     `document_${Date.now()}.jpg`,
+    //                 type:
+    //                     file.type ||
+    //                     'image/jpeg',
+    //             });
+    //         }
+
+
+    //         console.log(
+    //             'Updating doc:',
+    //             {
+    //                 DocumentType: doc.documentType || doc.name,
+    //                 DocumentNo: referenceNumber.trim().toUpperCase(),
+    //                 HasProfilePhoto: !!file?.uri,
+    //                 DocumentID: documentId
+    //             }
+    //         );
+
+    //         setIsDocumentUploading(true);
+    //         setUploadingDocId(documentId);
+    //         setDocumentUploadProgress(0);
+
+    //         const response = await axios.put(
+    //             API.UPDATE_PARTNER_DOCUMENT(documentId),
+    //             formData,
+    //             {
+    //                 headers: {
+    //                     Authorization: `Bearer ${token}`,
+    //                     'Content-Type': 'multipart/form-data',
+    //                     Accept: '*/*',
+    //                 },
+
+    //                 onUploadProgress: progressEvent => {
+    //                     if (progressEvent.total) {
+    //                         const progress = Math.round(
+    //                             (progressEvent.loaded * 100) /
+    //                             progressEvent.total
+    //                         );
+
+    //                         setDocumentUploadProgress(progress);
+    //                     }
+    //                 },
+    //             }
+    //         );
+
+    //         console.log(
+    //             'Update Document Response:',
+    //             response.data
+    //         );
+
+    //         if (response.data?.success === true) {
+
+    //             setDocumentUploadProgress(100);
+
+    //             await fetchProfile();
+
+    //             Alert.alert(
+    //                 'Success',
+    //                 response.data?.message ||
+    //                 'Document updated successfully.'
+    //             );
+
+    //             return true;
+    //         }
+
+    //         Alert.alert(
+    //             'Update Failed',
+    //             response.data?.message ||
+    //             'Unable to update document.'
+    //         );
+
+    //         return false;
+
+    //     } catch (error) {
+
+    //         console.log(
+    //             'Update Document Error:',
+    //             error?.response?.data || error
+    //         );
+
+    //         Alert.alert(
+    //             'Update Failed',
+    //             error?.response?.data?.message ||
+    //             'Unable to update document.'
+    //         );
+
+    //         return false;
+
+    //     } finally {
+
+    //         setIsDocumentUploading(false);
+    //         setUploadingDocId(null);
+
+    //         setTimeout(() => {
+    //             setDocumentUploadProgress(0);
+    //         }, 500);
+    //     }
+    // };
+
+
+
+    const handleEditDocumentUpload = async (
+        doc,
+        file,
+        referenceNumber
+    ) => {
+        try {
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return false;
+            }
+
+            const documentId = doc.documentId;
+
+            if (!documentId) {
+                Alert.alert(
+                    'Error',
+                    'Document ID not found.'
+                );
+                return false;
+            }
+
+            const formData = new FormData();
+
+            formData.append(
+                'DocumentType',
+                doc.documentType || doc.name
+            );
+
+            formData.append(
+                'DocumentNo',
+                referenceNumber.trim().toUpperCase()
+            );
+
+              console.log(
+                'Updating doc:',
+                {
+                    DocumentType: doc.documentType || doc.name,
+                    DocumentNo: referenceNumber.trim().toUpperCase(),
+                    HasProfilePhoto: !!file?.uri,
+                    DocumentID: documentId,
+                    filePath:doc.documentImage
+                }
+            );
+
+            // ------------------------------------
+            // NEW FILE OR EXISTING DOCUMENT FILE
+            // ------------------------------------
+            let fileToUpload = file;
+
+            // If only reference number changed,
+            // use existing document file
+            if (!fileToUpload?.uri && doc.documentImage) {
+
+                const existingFileUrl =
+                    doc.documentImage;
+
+                const fileName =
+                    doc.documentImage.split('/').pop() ||
+                    `document_${Date.now()}.jpg`;
+
+                const extension =
+                    fileName.split('.').pop()?.toLowerCase();
+
+                let mimeType = 'image/jpeg';
+
+                if (extension === 'png') {
+                    mimeType = 'image/png';
+                } else if (
+                    extension === 'pdf'
+                ) {
+                    mimeType = 'application/pdf';
+                } else if (
+                    extension === 'jpeg' ||
+                    extension === 'jpg'
+                ) {
+                    mimeType = 'image/jpeg';
+                }
+
+                fileToUpload = {
+                    uri: existingFileUrl,
+                    name: fileName,
+                    type: mimeType,
+                };
+            }
+
+            if (!fileToUpload?.uri) {
+                Alert.alert(
+                    'Document Required',
+                    'Unable to find the existing document file.'
+                );
+                return false;
+            }
+
+            // Append File
+            formData.append('File', {
+                uri: fileToUpload.uri,
+                name:
+                    fileToUpload.fileName ||
+                    fileToUpload.name ||
+                    `document_${Date.now()}.jpg`,
+                type:
+                    fileToUpload.type ||
+                    'image/jpeg',
+            });
+
+
+            console.log(
+                'Updating doc:',
+                {
+                    DocumentType: doc.documentType || doc.name,
+                    DocumentNo: referenceNumber.trim().toUpperCase(),
+                    HasProfilePhoto: !!file?.uri,
+                    DocumentID: documentId,
+                    filePath:doc.documentImage
+                }
+            );
+
+            // ------------------------------------
+            // START PROGRESS
+            // ------------------------------------
+            setIsDocumentUploading(true);
+            setUploadingDocId(documentId);
+            setDocumentUploadProgress(0);
+
+            // ------------------------------------
+            // PUT API
+            // ------------------------------------
+            const response = await axios.put(
+                API.UPDATE_PARTNER_DOCUMENT(documentId),
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data',
+                        Accept: '*/*',
+                    },
+
+                    onUploadProgress: progressEvent => {
+                        if (progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) /
+                                progressEvent.total
+                            );
+
+                            setDocumentUploadProgress(
+                                progress
+                            );
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Update Document Response:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+
+                setDocumentUploadProgress(100);
+
+                await fetchProfile();
+
+                Alert.alert(
+                    'Success',
+                    response.data?.message ||
+                    'Document updated successfully.'
+                );
+
+                return true;
+            }
+
+            Alert.alert(
+                'Update Failed',
+                response.data?.message ||
+                'Unable to update document.'
+            );
+
+            return false;
+
+        } catch (error) {
+
+            console.log(
+                'Update Document Error:',
+                error?.response?.data ||
+                error.message
+            );
+
+            Alert.alert(
+                'Update Failed',
+                error?.response?.data?.message ||
+                'Unable to update document.'
+            );
+
+            return false;
+
+        } finally {
+
+            setIsDocumentUploading(false);
+            setUploadingDocId(null);
+
+            setTimeout(() => {
+                setDocumentUploadProgress(0);
+            }, 500);
+        }
+    };
     const handleDeleteDocument = (docId) => {
         Alert.alert(
             'Delete Document',
@@ -2311,9 +3099,15 @@ const ProfileScreen = ({ navigation }) => {
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.refModalButton, styles.refSaveButton]}
-                            onPress={handleSaveRefNumber}
+                            onPress={
+                                isEditingReferenceNumber
+                                    ? handleUpdateReferenceNumber
+                                    : handleSaveRefNumber
+                            }
                         >
-                            <Text style={styles.refSaveText}>Continue</Text>
+                            <Text style={styles.refSaveText}>
+                                {isEditingReferenceNumber ? 'Update' : 'Continue'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -2437,7 +3231,7 @@ const ProfileScreen = ({ navigation }) => {
                                             style={[styles.documentModalAction, styles.editAction]}
                                             onPress={() => {
                                                 closeDocumentModal();
-                                                setTimeout(() => handleEditDocument(selectedDocument.id), 300);
+                                                setTimeout(() => handleEditDocument(selectedDocument), 300);
                                             }}
                                         >
                                             <Image
@@ -2500,6 +3294,7 @@ const ProfileScreen = ({ navigation }) => {
                         Loading profile...
                     </Text>
                 </View>
+                // <Loader visible={isProfileLoading} message="Please wait..." />
             ) : (
                 <>
                     {/* Curved Orange Toolbar */}
@@ -2564,20 +3359,43 @@ const ProfileScreen = ({ navigation }) => {
                                     />
                                     <View style={styles.profileImageOverlay} />
                                 </View>
-                                <TouchableOpacity
-                                    style={styles.editImageButton}
-                                    onPress={() => setShowImagePickerModal(true)}
-                                >
-                                    <Image
-                                        source={require('../../asset/camera.png')}
-                                        style={{
-                                            width: 20,
-                                            height: 20,
-                                            tintColor: "#FFFFFF",
-                                        }}
-                                    />
-                                </TouchableOpacity>
+
+                                {isUpdatingProfile && (
+                                    <View style={styles.profileUploadOverlay}>
+                                        <ActivityIndicator
+                                            size="small"
+                                            color="#FFFFFF"
+                                        />
+
+                                        <Text style={styles.profileUploadText}>
+                                            {profileUploadProgress}%
+                                        </Text>
+                                    </View>
+                                )}
+
+                                {!isUpdatingProfile && (
+                                    <TouchableOpacity
+                                        style={styles.editImageButton}
+                                        onPress={() => setShowImagePickerModal(true)}
+                                    >
+                                        <Image
+                                            source={require('../../asset/camera.png')}
+                                            style={{
+                                                width: 20,
+                                                height: 20,
+                                                tintColor: "#FFFFFF",
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                )}
                             </View>
+
+
+
+
+
+
+
                             <Text style={styles.profileName}>{firstName} {lastName}</Text>
                             <View style={styles.ratingContainer}>
                                 {renderStars(rating)}
@@ -4405,6 +5223,25 @@ const styles = StyleSheet.create({
         height: '100%',
         backgroundColor: '#FF8C00',
         borderRadius: 3,
+    },
+
+    profileUploadOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        borderRadius: 55,
+        backgroundColor: 'rgba(0,0,0,0.55)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    profileUploadText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontWeight: '700',
+        marginTop: 5,
     },
 
 
