@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useState, useRef, useEffect } from 'react';
 import {
     View,
@@ -16,7 +17,10 @@ import {
     TouchableWithoutFeedback,
     ImageBackground,
 } from 'react-native';
-
+import API from '../../util/API';
+import Loader from '../../util/Loader';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 
 const { width, height } = Dimensions.get('window');
 
@@ -41,8 +45,137 @@ const DashboardScreen = ({ navigation }) => {
     const statusMenuAnim = useRef(new Animated.Value(0)).current;
 
 
+    const [profileImage, setProfileImage] = useState('');
+    const [firstName, setFirstName] = useState('');
+    const [lastName, setLastName] = useState('');
+    const [mobileNumber, setMobileNumber] = useState('');
+    const [isProfileLoading, setIsProfileLoading] = useState(true);
+
+    const [gender, setGender] = useState('');
 
 
+    const getGenderImage = (gender) => {
+        const value = String(gender || '').toLowerCase();
+
+        if (value === 'female') {
+            return require('../../asset/woman.png');
+        }
+
+        if (
+            value === 'male' ||
+            value === 'man'
+        ) {
+            return require('../../asset/man.png');
+        }
+
+        return require('../../asset/genlogo.png');
+    };
+
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchProfile();
+        }, [])
+    );
+
+
+
+    const fetchProfile = async () => {
+        try {
+            setIsProfileLoading(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            console.log('Profile Token:', token);
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return;
+            }
+
+            const response = await fetch(API.PARTNER_PROFILE, {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    Accept: 'application/json',
+                },
+            });
+
+            const data = await response.json();
+
+            console.log('Profile API Response:', data);
+
+            if (!response.ok || data?.success !== true) {
+                Alert.alert(
+                    'Error',
+                    data?.message || 'Unable to fetch profile.',
+                    [
+                        {
+                            text: 'OK',
+                            onPress: () => navigation.goBack(),
+                        },
+                    ],
+                    { cancelable: false }
+                );
+                return;
+            }
+
+            // -----------------------------
+            // Personal Information
+            // -----------------------------
+
+            setFirstName(data.firstName || '');
+            setLastName(data.lastName || '');
+            setGender(data.gender || '');
+
+
+
+
+            setMobileNumber(
+                data.mobileNo
+                    ? `+91 ${data.mobileNo}`
+                    : ''
+            );
+
+
+
+
+            // -----------------------------
+            // Profile Photo
+            // -----------------------------
+
+            if (data.profilePhoto) {
+                setProfileImage(
+                    data.profilePhoto.startsWith('http')
+                        ? data.profilePhoto
+                        : `https://www.geniushomehelp.com/${data.profilePhoto}`
+                );
+            } else {
+                setProfileImage(null);
+            }
+
+            // -----------------------------
+            // Documents
+            // -----------------------------
+
+        } catch (error) {
+            console.log(
+                'Fetch Profile Error:',
+                error
+            );
+
+            Alert.alert(
+                'Error',
+                'Something went wrong while loading your profile.'
+            );
+
+        } finally {
+            setIsProfileLoading(false);
+        }
+    };
 
     // Get greeting based on time
     const getGreeting = () => {
@@ -984,9 +1117,13 @@ const DashboardScreen = ({ navigation }) => {
                 >
                     <View style={styles.sidebarHeader}>
                         <View style={styles.sidebarProfile}>
-                            <Image source={require('../../asset/demo-user.jpg')} style={styles.sidebarAvatar} />
+                            <Image source={
+                                profileImage
+                                    ? { uri: profileImage }
+                                    : getGenderImage(gender)
+                            } style={styles.sidebarAvatar} />
                             <View style={styles.sidebarUserInfo}>
-                                <Text style={styles.sidebarUserName}>{userData.name}</Text>
+                                <Text style={styles.sidebarUserName}>{firstName} {lastName}</Text>
                                 <TouchableOpacity
                                     style={styles.sidebarStatus}
                                     onPress={() => {
@@ -1082,7 +1219,9 @@ const DashboardScreen = ({ navigation }) => {
                     </View>
 
                     <View style={styles.sidebarFooter}>
-                        <TouchableOpacity style={styles.sidebarLogout}>
+                        <TouchableOpacity style={styles.sidebarLogout} onPress={() => {
+                            navigation.replace('LoginScreen');
+                        }}>
 
                             <Image
                                 source={require('../../asset/log-out.png')}
@@ -1210,416 +1349,425 @@ const DashboardScreen = ({ navigation }) => {
         <SafeAreaView style={[styles.safeArea, isOfflineStatus && styles.safeAreaOffline]}>
             <StatusBar barStyle="dark-content" backgroundColor={isOfflineStatus ? '#F0F0F0' : '#FFFFFF'} />
 
-            {/* Status Menu */}
-            {renderStatusMenu()}
 
-            {/* Sidebar */}
-            {renderSidebar()}
+            {isProfileLoading ? (
 
-            {/* Availability Modal */}
-            {renderAvailabilityModal()}
+                <Loader />
+            ) : (
+                <>
+                    {/* Status Menu */}
+                    {renderStatusMenu()}
 
-            {/* Main Content */}
-            <ScrollView
-                style={[styles.mainContent, isOfflineStatus && styles.mainContentOffline]}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={[styles.scrollContent, isOfflineStatus && styles.scrollContentOffline]}
-            >
-                {/* Header */}
-                <View style={styles.header}>
-                    <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
+                    {/* Sidebar */}
+                    {renderSidebar()}
 
-                        <Image
-                            source={require('../../asset/menu.png')}
-                            style={{
-                                width: 28,
-                                height: 28,
-                                tintColor: "#1A1A1A",
+                    {/* Availability Modal */}
+                    {renderAvailabilityModal()}
 
-                            }}
-                        />
-                    </TouchableOpacity>
-                    <View style={styles.headerRight}>
-                        <TouchableOpacity style={styles.notificationButton}>
-
-                            <Image
-                                source={require('../../asset/notifications.png')}
-                                style={{
-                                    width: 24,
-                                    height: 24,
-                                    tintColor: "#1A1A1A",
-
-                                }}
-                            />
-                            <View style={styles.notificationBadge} />
-                        </TouchableOpacity>
-                    </View>
-                </View>
-
-                {/* Greeting and Status with Menu */}
-                <View style={styles.greetingContainer}>
-                    <View>
-                        <Text style={styles.greeting}>{getGreeting()}! 👋</Text>
-                        <Text style={styles.userName}>{userData.name}</Text>
-                    </View>
-                    <TouchableOpacity
-                        style={[styles.statusContainer, isOfflineStatus && styles.statusContainerOffline]}
-                        onPress={toggleStatusMenu}
+                    {/* Main Content */}
+                    <ScrollView
+                        style={[styles.mainContent, isOfflineStatus && styles.mainContentOffline]}
+                        showsVerticalScrollIndicator={false}
+                        contentContainerStyle={[styles.scrollContent, isOfflineStatus && styles.scrollContentOffline]}
                     >
-                        <View style={[styles.statusDot, { backgroundColor: getCurrentStatusColor() }]} />
-                        <Text style={[styles.statusText, isOfflineStatus && styles.statusTextOffline]}>
-                            {getCurrentStatus()}
-                        </Text>
-                        <Image
-                            source={require('../../asset/chevron-down.png')}
-                            style={{
-                                width: 16,
-                                height: 16,
-                                tintColor: isOfflineStatus ? '#FF4444' : '#888'
-                            }}
-                        />
-                    </TouchableOpacity>
-                </View>
+                        {/* Header */}
+                        <View style={styles.header}>
+                            <TouchableOpacity onPress={toggleSidebar} style={styles.menuButton}>
 
-                {/* Offline Banner */}
-                {isOfflineStatus && (
-                    <View style={styles.offlineBanner}>
+                                <Image
+                                    source={require('../../asset/menu.png')}
+                                    style={{
+                                        width: 28,
+                                        height: 28,
+                                        tintColor: "#1A1A1A",
 
-                        <Image
-                            source={require('../../asset/alert.png')}
-                            style={{
-                                width: 20,
-                                height: 20,
-                                tintColor: "#FF4444",
-
-                            }}
-                        />
-                        <Text style={styles.offlineBannerText}>
-                            You are currently offline. Tap the status button to go online.
-                        </Text>
-                    </View>
-                )}
-
-                {/* Availability Schedule Summary */}
-                {availabilitySchedule.length > 0 && (
-                    <View style={[styles.availabilitySummary, isOfflineStatus && styles.availabilitySummaryOffline]}>
-                        <View style={styles.availabilitySummaryHeader}>
-                            <Image
-                                source={require('../../asset/calendar-outline.png')}
-                                style={{
-                                    width: 16,
-                                    height: 16,
-                                    tintColor: "#FF8C00"
-                                }}
-                            />
-                            <Text style={styles.availabilitySummaryTitle}>Offline Schedule</Text>
-                            <TouchableOpacity onPress={openAvailabilityModal}>
-                                <Text style={styles.availabilitySummaryAdd}>+ Add</Text>
+                                    }}
+                                />
                             </TouchableOpacity>
-                        </View>
-                        <FlatList
-                            data={availabilitySchedule}
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => (
-                                <View style={styles.availabilitySummaryItem}>
-                                    <View style={styles.availabilitySummaryItemLeft}>
-                                        <View style={styles.availabilitySummaryDot} />
-                                        <Text style={styles.availabilitySummaryDate}>{item.dateString}</Text>
-                                        {item.date.toDateString() === new Date().toDateString() && (
-                                            <View style={styles.availabilitySummaryToday}>
-                                                <Text style={styles.availabilitySummaryTodayText}>Today</Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                    <TouchableOpacity onPress={() => removeAvailabilitySchedule(item.id)}>
+                            <View style={styles.headerRight}>
+                                <TouchableOpacity style={styles.notificationButton}>
 
-                                        <Image
-                                            source={require('../../asset/close.png')}
-                                            style={{
-                                                width: 20,
-                                                height: 20,
-                                                tintColor: "#FF4444",
-
-                                            }}
-                                        />
-                                    </TouchableOpacity>
-                                </View>
-                            )}
-                        />
-                    </View>
-                )}
-
-
-                {/* Weather Forecast */}
-               
-
-
-                
-
-                {/* Today's Summary - Professional Colorful Cards */}
-
-
-
-
-                <ImageBackground
-                    source={require('../../asset/cleaning.jpg')}
-                    style={styles.summaryCardContainer}
-                    imageStyle={styles.summaryCardImage}
-                >
-                    <View style={styles.summaryCardOverlay}>
-                        <Text style={styles.summaryCardTitle}>Today's Summary</Text>
-                        <View style={styles.summaryCardGrid}>
-                            {/* Earnings */}
-                            <View style={styles.summaryCardItem}>
-                                <View style={[styles.summaryCardIconContainer, { backgroundColor: '#4CAF50' }]}>
                                     <Image
-                                        source={require('../../asset/cash.png')}
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            tintColor: "#FFFFFF",
-                                        }}
-                                    />
-                                </View>
-                                <View style={styles.summaryCardItemContent}>
-                                    <Text style={styles.summaryCardItemValue}>₹{userData.todayEarnings}</Text>
-                                    <Text style={styles.summaryCardItemLabel}>Earnings</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.summaryCardDivider} />
-
-                            {/* Assigned */}
-                            <View style={styles.summaryCardItem}>
-                                <View style={[styles.summaryCardIconContainer, { backgroundColor: '#FF8C00' }]}>
-                                    <Image
-                                        source={require('../../asset/briefcase.png')}
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            tintColor: "#FFFFFF",
-                                        }}
-                                    />
-                                </View>
-                                <View style={styles.summaryCardItemContent}>
-                                    <Text style={styles.summaryCardItemValue}>{userData.assignedJobs}</Text>
-                                    <Text style={styles.summaryCardItemLabel}>Assigned</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.summaryCardDivider} />
-
-                            {/* Completed */}
-                            <View style={styles.summaryCardItem}>
-                                <View style={[styles.summaryCardIconContainer, { backgroundColor: '#4CAF50' }]}>
-                                    <Image
-                                        source={require('../../asset/check-mark.png')}
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            tintColor: "#FFFFFF",
-                                        }}
-                                    />
-                                </View>
-                                <View style={styles.summaryCardItemContent}>
-                                    <Text style={styles.summaryCardItemValue}>{userData.completedJobs}</Text>
-                                    <Text style={styles.summaryCardItemLabel}>Completed</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.summaryCardDivider} />
-
-                            {/* Pending */}
-                            <View style={styles.summaryCardItem}>
-                                <View style={[styles.summaryCardIconContainer, { backgroundColor: '#FF6B35' }]}>
-                                    <Image
-                                        source={require('../../asset/time-outline.png')}
-                                        style={{
-                                            width: 22,
-                                            height: 22,
-                                            tintColor: "#FFFFFF",
-
-                                        }}
-                                    />
-                                </View>
-                                <View style={styles.summaryCardItemContent}>
-                                    <Text style={styles.summaryCardItemValue}>{userData.pendingJobs}</Text>
-                                    <Text style={styles.summaryCardItemLabel}>Pending</Text>
-                                </View>
-                            </View>
-                        </View>
-                    </View>
-                </ImageBackground>
-
-
-
-
-
-                {/* Today's Schedule - White Background with Distinct Styles */}
-                <View style={styles.scheduleContainer}>
-                    <View style={styles.scheduleHeader}>
-                        <Text style={styles.sectionTitle}>Today's Schedule</Text>
-                        <TouchableOpacity onPress={() => setShowAllSchedule(!showAllSchedule)}>
-                            <Text style={styles.viewAllText}>
-                                {showAllSchedule ? 'Show Less' : hasMoreItems ? 'View All' : ''}
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-                    <FlatList
-                        data={displayedSchedule}
-                        keyExtractor={(item) => item.id.toString()}
-                        renderItem={renderScheduleItem}
-                        scrollEnabled={false}
-                    />
-                    {!showAllSchedule && hasMoreItems && (
-                        <TouchableOpacity
-                            style={styles.viewAllButton}
-                            onPress={() => setShowAllSchedule(true)}
-                        >
-                            <Text style={styles.viewAllButtonText}>View All {sortedSchedule.length} Tasks</Text>
-
-                            <Image
-                                source={require('../../asset/arrow-forward.png')}
-                                style={{
-                                    width: 16,
-                                    height: 16,
-                                    tintColor: "#FF8C00",
-
-                                }}
-                            />
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Self Rating and Job Stats */}
-                <View style={[styles.ratingContainer, isOfflineStatus && styles.ratingContainerOffline]}>
-                    <View style={styles.ratingSection}>
-                        <Text style={styles.sectionTitle}>Your Rating</Text>
-                        <View style={styles.ratingDisplay}>
-                            <Text style={styles.ratingNumber}>{userData.rating}</Text>
-                            <View style={styles.starsContainer}>{renderStars(userData.rating)}</View>
-                        </View>
-                        <Text style={styles.ratingLabel}>Based on {userData.totalJobs} jobs</Text>
-                    </View>
-                    <View style={styles.jobStats}>
-                        <View style={styles.jobStat}>
-                            <Text style={styles.jobStatNumber}>{userData.totalJobs}</Text>
-                            <Text style={styles.jobStatLabel}>Jobs Done</Text>
-                        </View>
-                        <View style={styles.jobStatDivider} />
-                        <View style={styles.jobStat}>
-                            <Text style={styles.jobStatNumber}>₹{userData.totalEarnings.toLocaleString()}</Text>
-                            <Text style={styles.jobStatLabel}>Total Earned</Text>
-                        </View>
-                    </View>
-                </View>
-
-                {/* Upcoming Tasks with Date, Time, Duration */}
-                <View style={[styles.upcomingFloatContainer, isOfflineStatus && styles.upcomingFloatContainerOffline]}>
-                    <View style={styles.upcomingFloatHeader}>
-                        <Text style={styles.sectionTitle}>New Task Requests</Text>
-                        <Text style={styles.upcomingFloatBadge}>{upcomingTasks.length} New</Text>
-                    </View>
-                    <FlatList
-                        data={upcomingTasks}
-                        keyExtractor={(item) => item.id.toString()}
-                        renderItem={renderUpcomingItem}
-                        scrollEnabled={false}
-                    />
-                </View>
-
-                {/* Quick Actions */}
-                <View style={styles.quickActionsContainer}>
-                    <Text style={styles.sectionTitle}>Quick Actions</Text>
-                    <View style={styles.quickActionsGrid}>
-                        {quickActions.map((action) => (
-                            <TouchableOpacity key={action.id} style={[styles.quickActionItem, isOfflineStatus && styles.quickActionItemOffline]} onPress={() => {
-
-                                navigation.navigate(action.screen);
-                            }}>
-                                <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
-                                    <Image
-                                        source={action.image}
+                                        source={require('../../asset/notifications.png')}
                                         style={{
                                             width: 24,
                                             height: 24,
-                                            tintColor: action.color, // Remove if your PNGs are already colored
-                                            resizeMode: 'contain',
+                                            tintColor: "#1A1A1A",
+
                                         }}
                                     />
-                                </View>
-                                <Text style={styles.quickActionLabel}>{action.label}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
-
-                {/* Pro Tip */}
-                <View style={[styles.proTipContainer, isOfflineStatus && styles.proTipContainerOffline]}>
-                    <View style={styles.proTipContent}>
-                        <Text style={styles.proTipIcon}>💡</Text>
-                        <View style={styles.proTipTextContainer}>
-                            <Text style={styles.proTipTitle}>Pro Tip</Text>
-                            <Text style={styles.proTipDescription}>
-                                Complete 5 jobs this week to unlock a ₹500 bonus! Keep up the great work.
-                            </Text>
+                                    <View style={styles.notificationBadge} />
+                                </TouchableOpacity>
+                            </View>
                         </View>
-                    </View>
-                </View>
 
-                {/* Refer and Earn */}
-                <View style={[styles.referContainer, isOfflineStatus && styles.referContainerOffline]}>
-                    <View style={styles.referContent}>
-                        <Text style={styles.referIcon}>🎁</Text>
-                        <View style={styles.referTextContainer}>
-                            <Text style={styles.referTitle}>Refer & Earn</Text>
-                            <Text style={styles.referDescription}>
-                                Invite friends to join HomeHelp Partner and earn ₹200 for each successful referral!
-                            </Text>
-                            <TouchableOpacity style={styles.referButton}>
-                                <Text style={styles.referButtonText}>Refer Now →</Text>
+                        {/* Greeting and Status with Menu */}
+                        <View style={styles.greetingContainer}>
+                            <View>
+                                <Text style={styles.greeting}>{getGreeting()}! 👋</Text>
+                                <Text style={styles.userName}>{firstName} {lastName}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={[styles.statusContainer, isOfflineStatus && styles.statusContainerOffline]}
+                                onPress={toggleStatusMenu}
+                            >
+                                <View style={[styles.statusDot, { backgroundColor: getCurrentStatusColor() }]} />
+                                <Text style={[styles.statusText, isOfflineStatus && styles.statusTextOffline]}>
+                                    {getCurrentStatus()}
+                                </Text>
+                                <Image
+                                    source={require('../../asset/chevron-down.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: isOfflineStatus ? '#FF4444' : '#888'
+                                    }}
+                                />
                             </TouchableOpacity>
                         </View>
-                    </View>
-                </View>
 
-                {/* Why Use HomeHelp */}
-                <View style={styles.whyContainer}>
-                    <Text style={styles.sectionTitle}>Why Use HomeHelp Partner?</Text>
-                    <View style={styles.whyGrid}>
-                        {['Fair Earnings', 'Flexible Hours', 'Secure Platform', 'Growth Opportunities'].map((title, index) => (
-                            <View key={index} style={[styles.whyItem, isOfflineStatus && styles.whyItemOffline]}>
-                                <View style={styles.whyIconContainer}>
-                                    <Image
-                                        source={[
-                                            require('../../asset/cash.png'),
-                                            require('../../asset/time-outline.png'),
-                                            require('../../asset/shield.png'),
-                                            require('../../asset/growth.png'),
-                                        ][index]}
-                                        style={{
-                                            width: 24,
-                                            height: 24,
-                                            tintColor: '#FF8C00', // Remove if your PNGs are already colored
-                                            resizeMode: 'contain',
-                                        }}
-                                    />
-                                </View>
-                                <Text style={styles.whyTitle}>{title}</Text>
-                                <Text style={styles.whyDescription}>
-                                    {['Get paid competitively with transparent pricing',
-                                        'Work on your own schedule, anytime anywhere',
-                                        'Safe and verified customers & payments',
-                                        'Access training and career advancement'][index]}
+                        {/* Offline Banner */}
+                        {isOfflineStatus && (
+                            <View style={styles.offlineBanner}>
+
+                                <Image
+                                    source={require('../../asset/alert.png')}
+                                    style={{
+                                        width: 20,
+                                        height: 20,
+                                        tintColor: "#FF4444",
+
+                                    }}
+                                />
+                                <Text style={styles.offlineBannerText}>
+                                    You are currently offline. Tap the status button to go online.
                                 </Text>
                             </View>
-                        ))}
-                    </View>
-                </View>
+                        )}
 
-                {/* Footer spacing */}
-                <View style={{ height: 20 }} />
-            </ScrollView>
+                        {/* Availability Schedule Summary */}
+                        {availabilitySchedule.length > 0 && (
+                            <View style={[styles.availabilitySummary, isOfflineStatus && styles.availabilitySummaryOffline]}>
+                                <View style={styles.availabilitySummaryHeader}>
+                                    <Image
+                                        source={require('../../asset/calendar-outline.png')}
+                                        style={{
+                                            width: 16,
+                                            height: 16,
+                                            tintColor: "#FF8C00"
+                                        }}
+                                    />
+                                    <Text style={styles.availabilitySummaryTitle}>Offline Schedule</Text>
+                                    <TouchableOpacity onPress={openAvailabilityModal}>
+                                        <Text style={styles.availabilitySummaryAdd}>+ Add</Text>
+                                    </TouchableOpacity>
+                                </View>
+                                <FlatList
+                                    data={availabilitySchedule}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    renderItem={({ item }) => (
+                                        <View style={styles.availabilitySummaryItem}>
+                                            <View style={styles.availabilitySummaryItemLeft}>
+                                                <View style={styles.availabilitySummaryDot} />
+                                                <Text style={styles.availabilitySummaryDate}>{item.dateString}</Text>
+                                                {item.date.toDateString() === new Date().toDateString() && (
+                                                    <View style={styles.availabilitySummaryToday}>
+                                                        <Text style={styles.availabilitySummaryTodayText}>Today</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <TouchableOpacity onPress={() => removeAvailabilitySchedule(item.id)}>
+
+                                                <Image
+                                                    source={require('../../asset/close.png')}
+                                                    style={{
+                                                        width: 20,
+                                                        height: 20,
+                                                        tintColor: "#FF4444",
+
+                                                    }}
+                                                />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                />
+                            </View>
+                        )}
+
+
+                        {/* Weather Forecast */}
+
+
+
+
+
+                        {/* Today's Summary - Professional Colorful Cards */}
+
+
+
+
+                        <ImageBackground
+                            source={require('../../asset/cleaning.jpg')}
+                            style={styles.summaryCardContainer}
+                            imageStyle={styles.summaryCardImage}
+                        >
+                            <View style={styles.summaryCardOverlay}>
+                                <Text style={styles.summaryCardTitle}>Today's Summary</Text>
+                                <View style={styles.summaryCardGrid}>
+                                    {/* Earnings */}
+                                    <View style={styles.summaryCardItem}>
+                                        <View style={[styles.summaryCardIconContainer, { backgroundColor: '#4CAF50' }]}>
+                                            <Image
+                                                source={require('../../asset/cash.png')}
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    tintColor: "#FFFFFF",
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={styles.summaryCardItemContent}>
+                                            <Text style={styles.summaryCardItemValue}>₹{userData.todayEarnings}</Text>
+                                            <Text style={styles.summaryCardItemLabel}>Earnings</Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.summaryCardDivider} />
+
+                                    {/* Assigned */}
+                                    <View style={styles.summaryCardItem}>
+                                        <View style={[styles.summaryCardIconContainer, { backgroundColor: '#FF8C00' }]}>
+                                            <Image
+                                                source={require('../../asset/briefcase.png')}
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    tintColor: "#FFFFFF",
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={styles.summaryCardItemContent}>
+                                            <Text style={styles.summaryCardItemValue}>{userData.assignedJobs}</Text>
+                                            <Text style={styles.summaryCardItemLabel}>Assigned</Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.summaryCardDivider} />
+
+                                    {/* Completed */}
+                                    <View style={styles.summaryCardItem}>
+                                        <View style={[styles.summaryCardIconContainer, { backgroundColor: '#4CAF50' }]}>
+                                            <Image
+                                                source={require('../../asset/check-mark.png')}
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    tintColor: "#FFFFFF",
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={styles.summaryCardItemContent}>
+                                            <Text style={styles.summaryCardItemValue}>{userData.completedJobs}</Text>
+                                            <Text style={styles.summaryCardItemLabel}>Completed</Text>
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.summaryCardDivider} />
+
+                                    {/* Pending */}
+                                    <View style={styles.summaryCardItem}>
+                                        <View style={[styles.summaryCardIconContainer, { backgroundColor: '#FF6B35' }]}>
+                                            <Image
+                                                source={require('../../asset/time-outline.png')}
+                                                style={{
+                                                    width: 22,
+                                                    height: 22,
+                                                    tintColor: "#FFFFFF",
+
+                                                }}
+                                            />
+                                        </View>
+                                        <View style={styles.summaryCardItemContent}>
+                                            <Text style={styles.summaryCardItemValue}>{userData.pendingJobs}</Text>
+                                            <Text style={styles.summaryCardItemLabel}>Pending</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            </View>
+                        </ImageBackground>
+
+
+
+
+
+                        {/* Today's Schedule - White Background with Distinct Styles */}
+                        <View style={styles.scheduleContainer}>
+                            <View style={styles.scheduleHeader}>
+                                <Text style={styles.sectionTitle}>Today's Schedule</Text>
+                                <TouchableOpacity onPress={() => setShowAllSchedule(!showAllSchedule)}>
+                                    <Text style={styles.viewAllText}>
+                                        {showAllSchedule ? 'Show Less' : hasMoreItems ? 'View All' : ''}
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                            <FlatList
+                                data={displayedSchedule}
+                                keyExtractor={(item) => item.id.toString()}
+                                renderItem={renderScheduleItem}
+                                scrollEnabled={false}
+                            />
+                            {!showAllSchedule && hasMoreItems && (
+                                <TouchableOpacity
+                                    style={styles.viewAllButton}
+                                    onPress={() => setShowAllSchedule(true)}
+                                >
+                                    <Text style={styles.viewAllButtonText}>View All {sortedSchedule.length} Tasks</Text>
+
+                                    <Image
+                                        source={require('../../asset/arrow-forward.png')}
+                                        style={{
+                                            width: 16,
+                                            height: 16,
+                                            tintColor: "#FF8C00",
+
+                                        }}
+                                    />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+
+                        {/* Self Rating and Job Stats */}
+                        <View style={[styles.ratingContainer, isOfflineStatus && styles.ratingContainerOffline]}>
+                            <View style={styles.ratingSection}>
+                                <Text style={styles.sectionTitle}>Your Rating</Text>
+                                <View style={styles.ratingDisplay}>
+                                    <Text style={styles.ratingNumber}>{userData.rating}</Text>
+                                    <View style={styles.starsContainer}>{renderStars(userData.rating)}</View>
+                                </View>
+                                <Text style={styles.ratingLabel}>Based on {userData.totalJobs} jobs</Text>
+                            </View>
+                            <View style={styles.jobStats}>
+                                <View style={styles.jobStat}>
+                                    <Text style={styles.jobStatNumber}>{userData.totalJobs}</Text>
+                                    <Text style={styles.jobStatLabel}>Jobs Done</Text>
+                                </View>
+                                <View style={styles.jobStatDivider} />
+                                <View style={styles.jobStat}>
+                                    <Text style={styles.jobStatNumber}>₹{userData.totalEarnings.toLocaleString()}</Text>
+                                    <Text style={styles.jobStatLabel}>Total Earned</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Upcoming Tasks with Date, Time, Duration */}
+                        <View style={[styles.upcomingFloatContainer, isOfflineStatus && styles.upcomingFloatContainerOffline]}>
+                            <View style={styles.upcomingFloatHeader}>
+                                <Text style={styles.sectionTitle}>New Task Requests</Text>
+                                <Text style={styles.upcomingFloatBadge}>{upcomingTasks.length} New</Text>
+                            </View>
+                            <FlatList
+                                data={upcomingTasks}
+                                keyExtractor={(item) => item.id.toString()}
+                                renderItem={renderUpcomingItem}
+                                scrollEnabled={false}
+                            />
+                        </View>
+
+                        {/* Quick Actions */}
+                        <View style={styles.quickActionsContainer}>
+                            <Text style={styles.sectionTitle}>Quick Actions</Text>
+                            <View style={styles.quickActionsGrid}>
+                                {quickActions.map((action) => (
+                                    <TouchableOpacity key={action.id} style={[styles.quickActionItem, isOfflineStatus && styles.quickActionItemOffline]} onPress={() => {
+
+                                        navigation.navigate(action.screen);
+                                    }}>
+                                        <View style={[styles.quickActionIcon, { backgroundColor: action.color + '15' }]}>
+                                            <Image
+                                                source={action.image}
+                                                style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                    tintColor: action.color, // Remove if your PNGs are already colored
+                                                    resizeMode: 'contain',
+                                                }}
+                                            />
+                                        </View>
+                                        <Text style={styles.quickActionLabel}>{action.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* Pro Tip */}
+                        <View style={[styles.proTipContainer, isOfflineStatus && styles.proTipContainerOffline]}>
+                            <View style={styles.proTipContent}>
+                                <Text style={styles.proTipIcon}>💡</Text>
+                                <View style={styles.proTipTextContainer}>
+                                    <Text style={styles.proTipTitle}>Pro Tip</Text>
+                                    <Text style={styles.proTipDescription}>
+                                        Complete 5 jobs this week to unlock a ₹500 bonus! Keep up the great work.
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Refer and Earn */}
+                        <View style={[styles.referContainer, isOfflineStatus && styles.referContainerOffline]}>
+                            <View style={styles.referContent}>
+                                <Text style={styles.referIcon}>🎁</Text>
+                                <View style={styles.referTextContainer}>
+                                    <Text style={styles.referTitle}>Refer & Earn</Text>
+                                    <Text style={styles.referDescription}>
+                                        Invite friends to join HomeHelp Partner and earn ₹200 for each successful referral!
+                                    </Text>
+                                    <TouchableOpacity style={styles.referButton}>
+                                        <Text style={styles.referButtonText}>Refer Now →</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        </View>
+
+                        {/* Why Use HomeHelp */}
+                        <View style={styles.whyContainer}>
+                            <Text style={styles.sectionTitle}>Why Use HomeHelp Partner?</Text>
+                            <View style={styles.whyGrid}>
+                                {['Fair Earnings', 'Flexible Hours', 'Secure Platform', 'Growth Opportunities'].map((title, index) => (
+                                    <View key={index} style={[styles.whyItem, isOfflineStatus && styles.whyItemOffline]}>
+                                        <View style={styles.whyIconContainer}>
+                                            <Image
+                                                source={[
+                                                    require('../../asset/cash.png'),
+                                                    require('../../asset/time-outline.png'),
+                                                    require('../../asset/shield.png'),
+                                                    require('../../asset/growth.png'),
+                                                ][index]}
+                                                style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                    tintColor: '#FF8C00', // Remove if your PNGs are already colored
+                                                    resizeMode: 'contain',
+                                                }}
+                                            />
+                                        </View>
+                                        <Text style={styles.whyTitle}>{title}</Text>
+                                        <Text style={styles.whyDescription}>
+                                            {['Get paid competitively with transparent pricing',
+                                                'Work on your own schedule, anytime anywhere',
+                                                'Safe and verified customers & payments',
+                                                'Access training and career advancement'][index]}
+                                        </Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
+
+                        {/* Footer spacing */}
+                        <View style={{ height: 20 }} />
+                    </ScrollView>
+                </>
+
+            )}
         </SafeAreaView>
     );
 };
@@ -2901,130 +3049,130 @@ const styles = StyleSheet.create({
     },
 
     weatherContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 16,
-    height: 240,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 5,
-  },
-  weatherContainerOffline: {
-    opacity: 0.85,
-  },
-  weatherBackgroundImage: {
-    borderRadius: 16,
-  },
-  weatherOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  weatherContent: {
-    flex: 1,
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  weatherHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  weatherLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weatherTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1A1A1A',
-    marginLeft: 8,
-  },
-  weatherUpdate: {
-    fontSize: 10,
-    color: '#999',
-    fontWeight: '400',
-  },
-  weatherMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flex: 1,
-  },
-  weatherTempSection: {
-    flex: 0.4,
-  },
-  weatherTemp: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: '#1A1A1A',
-    marginBottom: 4,
-  },
-  weatherConditionBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  weatherCondition: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-  weatherDivider: {
-    width: 1,
-    height: 50,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  weatherDetails: {
-    flex: 0.6,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 8,
-  },
-  weatherDetailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  weatherDetailText: {
-    marginLeft: 4,
-  },
-  weatherDetailLabel: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.7)',
-    fontWeight: '400',
-  },
-  weatherDetailValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  weatherAlert: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  weatherAlertText: {
-    fontSize: 12,
-    color: '#FFFFFF',
-    marginLeft: 8,
-    flex: 1,
-    fontWeight: '500',
-  },
+        borderRadius: 16,
+        overflow: 'hidden',
+        marginBottom: 16,
+        height: 240,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 5,
+    },
+    weatherContainerOffline: {
+        opacity: 0.85,
+    },
+    weatherBackgroundImage: {
+        borderRadius: 16,
+    },
+    weatherOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.3)',
+    },
+    weatherContent: {
+        flex: 1,
+        padding: 16,
+        justifyContent: 'space-between',
+    },
+    weatherHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    weatherLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    weatherTitle: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#1A1A1A',
+        marginLeft: 8,
+    },
+    weatherUpdate: {
+        fontSize: 10,
+        color: '#999',
+        fontWeight: '400',
+    },
+    weatherMain: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flex: 1,
+    },
+    weatherTempSection: {
+        flex: 0.4,
+    },
+    weatherTemp: {
+        fontSize: 36,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        marginBottom: 4,
+    },
+    weatherConditionBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        alignSelf: 'flex-start',
+    },
+    weatherCondition: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        fontWeight: '500',
+        marginLeft: 4,
+    },
+    weatherDivider: {
+        width: 1,
+        height: 50,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+    },
+    weatherDetails: {
+        flex: 0.6,
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        paddingHorizontal: 8,
+    },
+    weatherDetailItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    weatherDetailText: {
+        marginLeft: 4,
+    },
+    weatherDetailLabel: {
+        fontSize: 9,
+        color: 'rgba(255,255,255,0.7)',
+        fontWeight: '400',
+    },
+    weatherDetailValue: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: '#FFFFFF',
+    },
+    weatherAlert: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.15)',
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
+    },
+    weatherAlertText: {
+        fontSize: 12,
+        color: '#FFFFFF',
+        marginLeft: 8,
+        flex: 1,
+        fontWeight: '500',
+    },
 });
 
 export default DashboardScreen;

@@ -29,7 +29,7 @@ import {
     launchImageLibrary,
 } from 'react-native-image-picker';
 import axios from 'axios';
-import { Loader } from '../../util/Loader';
+import Loader from '../../util/Loader';
 
 const { width, height } = Dimensions.get('window');
 
@@ -95,6 +95,25 @@ const ProfileScreen = ({ navigation }) => {
     const [profileUploadProgress, setProfileUploadProgress] = useState(0);
     const [isEditingReferenceNumber, setIsEditingReferenceNumber] =
         useState(false);
+
+    const [showUploadOptionsModal, setShowUploadOptionsModal] = useState(false);
+    const [uploadDocId, setUploadDocId] = useState(null);
+
+    const [isUpdatingExperience, setIsUpdatingExperience] =
+        useState(false);
+
+    const [experienceUploadProgress, setExperienceUploadProgress] =
+        useState(0);
+
+
+    const [isUpdatingLocation, setIsUpdatingLocation] =
+        useState(false);
+
+    const [locationUploadProgress, setLocationUploadProgress] =
+        useState(0);
+
+    const [isUpdatingDocument, setIsUpdatingDocument] = useState(false);
+
 
     // 5 Documents
     const [uploadedDocuments, setUploadedDocuments] = useState([
@@ -574,6 +593,326 @@ const ProfileScreen = ({ navigation }) => {
     };
 
 
+    const updateExperience = async (experienceYears) => {
+        try {
+            setIsUpdatingExperience(true);
+            setExperienceUploadProgress(0);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return;
+            }
+
+            const formData = new FormData();
+
+            // Experience
+            formData.append(
+                'ExperienceYears',
+                String(experienceYears)
+            );
+
+            // Other existing profile values
+            formData.append(
+                'Latitude',
+                tempLatitude
+            );
+
+            formData.append(
+                'Longitude',
+                tempLongitude
+            );
+
+            formData.append(
+                'PreferredArea',
+                area || ''
+            );
+
+            formData.append(
+                'PreferredAreaAddress',
+                location || ''
+            );
+
+            formData.append(
+                'PreferredAreaPINcode',
+                pincode || ''
+            );
+
+            // -----------------------------------------
+            // Existing Profile Image as File
+            // -----------------------------------------
+
+            if (profileImage) {
+
+                const profilePhotoUrl =
+                    profileImage;
+
+                const fileName =
+                    profileImage.split('/').pop() ||
+                    `profile_${Date.now()}.jpg`;
+
+                const extension =
+                    fileName.split('.').pop()?.toLowerCase();
+
+                let mimeType = 'image/jpeg';
+
+                if (extension === 'png') {
+                    mimeType = 'image/png';
+                } else if (
+                    extension === 'jpg' ||
+                    extension === 'jpeg'
+                ) {
+                    mimeType = 'image/jpeg';
+                }
+
+                formData.append('ProfilePhoto', {
+                    uri: profilePhotoUrl,
+                    name: fileName,
+                    type: mimeType,
+                });
+            }
+
+            const response = await axios.put(
+                API.PARTNER_PROFILE,
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data',
+                        Accept: '*/*',
+                    },
+
+                    onUploadProgress: progressEvent => {
+                        if (progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) /
+                                progressEvent.total
+                            );
+
+                            setExperienceUploadProgress(progress);
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Update Experience Response:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+
+                setProfileUploadProgress(100);
+
+                // await fetchProfile();
+
+                setExperienceYears(experienceYears);
+                setExperience(experienceYears === '10+' ? '10+ years' : `${experienceYears} years`);
+                setShowExperienceModal(false);
+
+                Alert.alert(
+                    'Success',
+                    'Experience updated successfully.'
+                );
+            } else {
+
+                Alert.alert(
+                    'Failed',
+                    response.data?.message ||
+                    'Unable to update experience.'
+                );
+            }
+
+        } catch (error) {
+
+            console.log(
+                'Update Experience Error:',
+                error?.response?.data || error
+            );
+
+            Alert.alert(
+                'Error',
+                error?.response?.data?.message ||
+                'Unable to update experience.'
+            );
+
+        } finally {
+
+            setIsUpdatingExperience(false);
+
+            setTimeout(() => {
+                setExperienceUploadProgress(0);
+            }, 500);
+        }
+    };
+
+
+    const updateLocation = async (address, latitude, longitude, area, pincode) => {
+        try {
+
+            setIsUpdatingLocation(true);
+            setLocationUploadProgress(0);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Session Expired',
+                    'Please login again.'
+                );
+                return;
+            }
+
+            const formData = new FormData();
+
+            // Experience
+            formData.append(
+                'ExperienceYears',
+                String(experienceYears)
+            );
+
+            // Other existing profile values
+            formData.append(
+                'Latitude',
+                latitude
+            );
+
+            formData.append(
+                'Longitude',
+                longitude
+            );
+
+            formData.append(
+                'PreferredArea',
+                area || ''
+            );
+
+            formData.append(
+                'PreferredAreaAddress',
+                address || ''
+            );
+
+            formData.append(
+                'PreferredAreaPINcode',
+                pincode || ''
+            );
+
+            // -----------------------------------------
+            // Existing Profile Image as File
+            // -----------------------------------------
+
+            if (profileImage) {
+
+                const profilePhotoUrl =
+                    profileImage;
+
+                const fileName =
+                    profileImage.split('/').pop() ||
+                    `profile_${Date.now()}.jpg`;
+
+                const extension =
+                    fileName.split('.').pop()?.toLowerCase();
+
+                let mimeType = 'image/jpeg';
+
+                if (extension === 'png') {
+                    mimeType = 'image/png';
+                } else if (
+                    extension === 'jpg' ||
+                    extension === 'jpeg'
+                ) {
+                    mimeType = 'image/jpeg';
+                }
+
+                formData.append('ProfilePhoto', {
+                    uri: profilePhotoUrl,
+                    name: fileName,
+                    type: mimeType,
+                });
+            }
+
+            const response = await axios.put(
+                API.PARTNER_PROFILE,
+                formData,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data',
+                        Accept: '*/*',
+                    },
+
+                    onUploadProgress: progressEvent => {
+                        if (progressEvent.total) {
+                            const progress = Math.round(
+                                (progressEvent.loaded * 100) /
+                                progressEvent.total
+                            );
+
+                            setLocationUploadProgress(progress);
+                        }
+                    },
+                }
+            );
+
+            console.log(
+                'Update Location Response:',
+                response.data
+            );
+
+            if (response.data?.success === true) {
+
+                setLocationUploadProgress(100);
+
+                setLocation(address);
+                setArea(area);
+                setPincode(pincode);
+                setShowLocationModal(false);
+
+                // await fetchProfile();
+
+
+
+                Alert.alert(
+                    'Success',
+                    'Location updated successfully.'
+                );
+            } else {
+
+                Alert.alert(
+                    'Failed',
+                    response.data?.message ||
+                    'Unable to update location.'
+                );
+            }
+
+        } catch (error) {
+
+            console.log(
+                'Update Location Error:',
+                error?.response?.data || error
+            );
+
+            Alert.alert(
+                'Error',
+                error?.response?.data?.message ||
+                'Unable to update location.'
+            );
+
+        } finally {
+
+            setIsUpdatingLocation(false);
+
+            setTimeout(() => {
+                setLocationUploadProgress(0);
+            }, 500);
+        }
+    };
+
+
     const updatePartnerProfile = async (profilePhotoFile = null) => {
         try {
             setIsUpdatingProfile(true);
@@ -688,7 +1027,7 @@ const ProfileScreen = ({ navigation }) => {
                 setProfileUploadProgress(100);
                 setProfileImage(profilePhotoFile.uri);
 
-                await fetchProfile();
+                //await fetchProfile();
 
                 Alert.alert(
                     'Success',
@@ -1678,11 +2017,9 @@ const ProfileScreen = ({ navigation }) => {
             Alert.alert('Required', 'Please select a location');
             return;
         }
-        setLocation(tempLocation);
-        setArea(tempArea);
-        setPincode(tempPincode);
-        setShowLocationModal(false);
-        Alert.alert('Success', 'Location updated successfully!');
+
+        updateLocation(tempLocation, tempLatitude, tempLongitude, tempArea, tempPincode);
+
     };
 
     const handleSaveLocation = () => {
@@ -1746,25 +2083,12 @@ const ProfileScreen = ({ navigation }) => {
     };
 
     const showUploadOptions = (docId) => {
-        Alert.alert(
-            'Upload Document',
-            'Choose upload option',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Camera',
-                    onPress: () => {
-                        openDocumentCamera(docId);
-                    }
-                },
-                {
-                    text: 'Gallery',
-                    onPress: () => {
-                        openDocumentGallery(docId);
-                    }
-                },
-            ]
-        );
+        setUploadDocId(docId);
+        setShowUploadOptionsModal(true);
+        // Animate modal in after it becomes visible
+        setTimeout(() => {
+            animateModalIn();
+        }, 100);
     };
 
     const handleSaveRefNumber = () => {
@@ -1925,7 +2249,7 @@ const ProfileScreen = ({ navigation }) => {
             return;
         }
 
-        setShowRefNumberModal(false);
+        // setShowRefNumberModal(false);
 
         /*
          * For reference-number-only update,
@@ -2244,6 +2568,9 @@ const ProfileScreen = ({ navigation }) => {
         referenceNumber
     ) => {
         try {
+
+            setIsUpdatingDocument(true);
+            setDocumentUploadProgress(0);
             const token = await AsyncStorage.getItem('token');
 
             if (!token) {
@@ -2276,14 +2603,14 @@ const ProfileScreen = ({ navigation }) => {
                 referenceNumber.trim().toUpperCase()
             );
 
-              console.log(
+            console.log(
                 'Updating doc:',
                 {
                     DocumentType: doc.documentType || doc.name,
                     DocumentNo: referenceNumber.trim().toUpperCase(),
                     HasProfilePhoto: !!file?.uri,
                     DocumentID: documentId,
-                    filePath:doc.documentImage
+                    filePath: doc.documentImage
                 }
             );
 
@@ -2356,7 +2683,7 @@ const ProfileScreen = ({ navigation }) => {
                     DocumentNo: referenceNumber.trim().toUpperCase(),
                     HasProfilePhoto: !!file?.uri,
                     DocumentID: documentId,
-                    filePath:doc.documentImage
+                    filePath: doc.documentImage
                 }
             );
 
@@ -2387,9 +2714,12 @@ const ProfileScreen = ({ navigation }) => {
                                 progressEvent.total
                             );
 
-                            setDocumentUploadProgress(
+                            console.log(
+                                'Document upload progress:',
                                 progress
                             );
+
+                            setDocumentUploadProgress(progress);
                         }
                     },
                 }
@@ -2403,6 +2733,12 @@ const ProfileScreen = ({ navigation }) => {
             if (response.data?.success === true) {
 
                 setDocumentUploadProgress(100);
+                setShowRefNumberModal(false);
+
+                // Reset edit states
+                setIsEditingReferenceNumber(false);
+                setTempRefNumber('');
+                setSelectedDocument(null);
 
                 await fetchProfile();
 
@@ -2440,7 +2776,7 @@ const ProfileScreen = ({ navigation }) => {
             return false;
 
         } finally {
-
+            setIsUpdatingDocument(false);
             setIsDocumentUploading(false);
             setUploadingDocId(null);
 
@@ -2449,6 +2785,10 @@ const ProfileScreen = ({ navigation }) => {
             }, 500);
         }
     };
+
+
+
+
     const handleDeleteDocument = (docId) => {
         Alert.alert(
             'Delete Document',
@@ -2475,6 +2815,139 @@ const ProfileScreen = ({ navigation }) => {
             ]
         );
     };
+
+
+    // Render Upload Options Modal
+    const renderUploadOptionsModal = () => (
+        <Modal
+            visible={showUploadOptionsModal}
+            transparent
+            animationType="none"
+            onRequestClose={() => setShowUploadOptionsModal(false)}
+        >
+            <TouchableOpacity
+                style={styles.uploadOptionsOverlay}
+                activeOpacity={1}
+                onPress={() => setShowUploadOptionsModal(false)}
+            >
+                <TouchableWithoutFeedback>
+                    <Animated.View
+                        style={[
+                            styles.uploadOptionsContent,
+                            {
+                                transform: [{
+                                    translateY: modalSlideAnim.interpolate({
+                                        inputRange: [0, height],
+                                        outputRange: [0, height]
+                                    })
+                                }]
+                            }
+                        ]}
+                    >
+                        <View style={styles.uploadOptionsHandle} />
+
+                        <View style={styles.uploadOptionsHeader}>
+                            <Text style={styles.uploadOptionsTitle}>Upload Document</Text>
+                            <Text style={styles.uploadOptionsSubtitle}>
+                                Choose how you want to upload your document
+                            </Text>
+                        </View>
+
+                        <View style={styles.uploadOptionsContainer}>
+                            {/* Camera Option */}
+                            <TouchableOpacity
+                                style={styles.uploadOptionItem}
+                                onPress={() => {
+                                    setShowUploadOptionsModal(false);
+                                    setTimeout(() => {
+                                        if (uploadDocId) {
+                                            openDocumentCamera(uploadDocId);
+                                        }
+                                    }, 300);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.uploadOptionIcon, { backgroundColor: '#FF8C0015' }]}>
+                                    <Image
+                                        source={require('../../asset/camera.png')}
+                                        style={{
+                                            width: 32,
+                                            height: 32,
+                                            tintColor: '#FF8C00',
+                                            resizeMode: 'contain',
+                                        }}
+                                    />
+                                </View>
+                                <View style={styles.uploadOptionTextContainer}>
+                                    <Text style={styles.uploadOptionTitle}>Camera</Text>
+                                    <Text style={styles.uploadOptionDescription}>
+                                        Take a photo with your camera
+                                    </Text>
+                                </View>
+                                <Image
+                                    source={require('../../asset/arrow-forward.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: '#CCC',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </TouchableOpacity>
+
+                            {/* Gallery Option */}
+                            <TouchableOpacity
+                                style={styles.uploadOptionItem}
+                                onPress={() => {
+                                    setShowUploadOptionsModal(false);
+                                    setTimeout(() => {
+                                        if (uploadDocId) {
+                                            openDocumentGallery(uploadDocId);
+                                        }
+                                    }, 300);
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <View style={[styles.uploadOptionIcon, { backgroundColor: '#0984E315' }]}>
+                                    <Image
+                                        source={require('../../asset/attach.png')}
+                                        style={{
+                                            width: 32,
+                                            height: 32,
+                                            tintColor: '#0984E3',
+                                            resizeMode: 'contain',
+                                        }}
+                                    />
+                                </View>
+                                <View style={styles.uploadOptionTextContainer}>
+                                    <Text style={styles.uploadOptionTitle}>Gallery</Text>
+                                    <Text style={styles.uploadOptionDescription}>
+                                        Choose from your gallery or files
+                                    </Text>
+                                </View>
+                                <Image
+                                    source={require('../../asset/arrow-forward.png')}
+                                    style={{
+                                        width: 16,
+                                        height: 16,
+                                        tintColor: '#CCC',
+                                        resizeMode: 'contain',
+                                    }}
+                                />
+                            </TouchableOpacity>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.uploadOptionsCancel}
+                            onPress={() => setShowUploadOptionsModal(false)}
+                        >
+                            <Text style={styles.uploadOptionsCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </TouchableWithoutFeedback>
+            </TouchableOpacity>
+        </Modal>
+    );
     const renderImagePickerModal = () => (
         <Modal
             visible={showImagePickerModal}
@@ -2632,40 +3105,332 @@ const ProfileScreen = ({ navigation }) => {
     );
 
 
+    // const renderLocationModal = () => (
+    //     <Modal
+    //         visible={showLocationModal}
+    //         transparent
+    //         animationType="slide"
+    //         onRequestClose={() => setShowLocationModal(false)}
+    //     >
+
+    //         {isUpdatingLocation && (
+    //             <View style={styles.experienceLoadingOverlay}>
+    //                 <View style={styles.experienceLoadingBox}>
+
+    //                     <ActivityIndicator
+    //                         size="large"
+    //                         color="#FF8C00"
+    //                     />
+
+    //                     <Text style={styles.experienceLoadingTitle}>
+    //                         Updating Location
+    //                     </Text>
+
+    //                     <Text style={styles.experienceLoadingProgress}>
+    //                         {locationUploadProgress}%
+    //                     </Text>
+
+    //                     <Text style={styles.experienceLoadingSubtitle}>
+    //                         Please wait...
+    //                     </Text>
+
+    //                 </View>
+    //             </View>
+    //         )}
+    //         <View style={styles.locationModalOverlay}>
+    //             <View style={styles.locationModalContent}>
+    //                 <View style={styles.locationModalHandle} />
+    //                 <ScrollView
+    //                     style={styles.locationModalScroll}
+    //                     showsVerticalScrollIndicator={false}
+    //                     keyboardShouldPersistTaps="handled"
+    //                     nestedScrollEnabled={true}
+    //                 >
+    //                     <View style={styles.locationModalHeader}>
+    //                         <Text style={styles.locationModalTitle}>Select Location</Text>
+    //                         <TouchableOpacity onPress={() => setShowLocationModal(false)}>
+    //                             <Image
+    //                                 source={require('../../asset/close.png')}
+    //                                 style={{
+    //                                     width: 24,
+    //                                     height: 24,
+    //                                     tintColor: '#666',
+    //                                     resizeMode: 'contain',
+    //                                 }}
+    //                             />
+    //                         </TouchableOpacity>
+    //                     </View>
+    //                 </ScrollView>
+
+
+    //                 {/* Search Input */}
+    //                 <View style={styles.locationSearchWrapper}>
+    //                     <Image
+    //                         source={require('../../asset/search.png')}
+    //                         style={{
+    //                             width: 20,
+    //                             height: 20,
+    //                             tintColor: '#999',
+    //                             resizeMode: 'contain',
+    //                             marginRight: 10,
+    //                         }}
+    //                     />
+    //                     <TextInput
+    //                         style={styles.locationSearchInput}
+    //                         placeholder="Search location..."
+    //                         placeholderTextColor="#999"
+    //                         value={searchLocationText}
+    //                         onChangeText={searchLocationPlaces}
+    //                         autoCorrect={false}
+    //                         autoCapitalize="none"
+    //                         returnKeyType="search"
+    //                         clearButtonMode="while-editing"
+    //                     />
+    //                     {isSearchingLocation && (
+    //                         <ActivityIndicator size="small" color="#FF8C00" style={{ marginLeft: 8 }} />
+    //                     )}
+    //                     {searchLocationText.length > 0 && !isSearchingLocation && (
+    //                         <TouchableOpacity
+    //                             onPress={() => {
+    //                                 setSearchLocationText('');
+    //                                 setLocationSuggestions([]);
+    //                                 setShowLocationSuggestions(false);
+    //                             }}
+    //                             style={{ marginLeft: 8 }}
+    //                         >
+    //                             <Image
+    //                                 source={require('../../asset/edit.png')}
+    //                                 style={{
+    //                                     width: 20,
+    //                                     height: 20,
+    //                                     tintColor: '#999',
+    //                                     resizeMode: 'contain',
+    //                                 }}
+    //                             />
+    //                         </TouchableOpacity>
+    //                     )}
+    //                 </View>
+
+    //                 {/* Location Suggestions */}
+    //                 {showLocationSuggestions && locationSuggestions.length > 0 && (
+    //                     <View style={styles.locationSuggestionsContainer}>
+    //                         <ScrollView
+    //                             style={styles.locationSuggestionsList}
+    //                             nestedScrollEnabled={true}
+    //                             keyboardShouldPersistTaps="handled"
+    //                             showsVerticalScrollIndicator={true}
+    //                         >
+    //                             {locationSuggestions.map((item, index) => (
+    //                                 <TouchableOpacity
+    //                                     key={`${item.place_id}-${index}`}
+    //                                     style={styles.locationSuggestionItem}
+    //                                     onPress={() => handleLocationSelect(item)}
+    //                                     activeOpacity={0.7}
+    //                                 >
+    //                                     <View style={styles.locationSuggestionIconContainer}>
+    //                                         <Image
+    //                                             source={require('../../asset/location-outline.png')}
+    //                                             style={{
+    //                                                 width: 18,
+    //                                                 height: 18,
+    //                                                 tintColor: '#FF8C00',
+    //                                                 resizeMode: 'contain',
+    //                                             }}
+    //                                         />
+    //                                     </View>
+    //                                     <View style={styles.locationSuggestionTextContainer}>
+    //                                         <Text style={styles.locationSuggestionTitle} numberOfLines={1}>
+    //                                             {item.structured_formatting?.main_text || item.description}
+    //                                         </Text>
+    //                                         <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
+    //                                             {item.structured_formatting?.secondary_text || ''}
+    //                                         </Text>
+    //                                     </View>
+    //                                 </TouchableOpacity>
+    //                             ))}
+    //                         </ScrollView>
+    //                     </View>
+    //                 )}
+
+    //                 {/* Map View */}
+    //                 {/* Map View */}
+    //                 <View style={styles.locationMapContainer}>
+    //                     {tempLatitude && tempLongitude ? (
+    //                         <MapView
+    //                             style={styles.locationMap}
+    //                             region={mapRegion || {
+    //                                 latitude: tempLatitude,
+    //                                 longitude: tempLongitude,
+    //                                 latitudeDelta: 0.005,
+    //                                 longitudeDelta: 0.005,
+    //                             }}
+    //                             onRegionChangeComplete={(region) => {
+    //                                 // Only update when region changes significantly
+    //                                 const latDiff = Math.abs(region.latitude - tempLatitude);
+    //                                 const lngDiff = Math.abs(region.longitude - tempLongitude);
+    //                                 if (latDiff > 0.0001 || lngDiff > 0.0001) {
+    //                                     setTempLatitude(region.latitude);
+    //                                     setTempLongitude(region.longitude);
+    //                                     setMapRegion(region);
+    //                                 }
+    //                             }}
+    //                             showsUserLocation={true}
+    //                             showsMyLocationButton={true}
+    //                             zoomEnabled={true}
+    //                             scrollEnabled={true}
+    //                             onMapReady={() => {
+    //                                 console.log('Map ready');
+    //                             }}
+    //                         >
+    //                             <Marker
+    //                                 coordinate={{
+    //                                     latitude: tempLatitude,
+    //                                     longitude: tempLongitude,
+    //                                 }}
+    //                                 title="Selected Location"
+    //                                 description={tempLocation || 'Your location'}
+    //                                 draggable
+    //                                 onDragEnd={(e) => {
+    //                                     const { latitude, longitude } = e.nativeEvent.coordinate;
+    //                                     setTempLatitude(latitude);
+    //                                     setTempLongitude(longitude);
+    //                                     // Update map region
+    //                                     setMapRegion({
+    //                                         latitude: latitude,
+    //                                         longitude: longitude,
+    //                                         latitudeDelta: 0.005,
+    //                                         longitudeDelta: 0.005,
+    //                                     });
+    //                                     // Reverse geocode
+    //                                     reverseGeocodeLocation(latitude, longitude);
+    //                                 }}
+    //                             />
+    //                         </MapView>
+    //                     ) : (
+    //                         <View style={styles.locationMapLoading}>
+    //                             <ActivityIndicator size="large" color="#FF8C00" />
+    //                             <Text style={styles.locationMapLoadingText}>Loading map...</Text>
+    //                         </View>
+    //                     )}
+    //                 </View>
+
+    //                 {/* Location Details */}
+    //                 {tempLocation && (
+    //                     <View style={styles.locationDetailsCard}>
+    //                         <View style={styles.locationDetailRow}>
+    //                             <Image
+    //                                 source={require('../../asset/location-outline.png')}
+    //                                 style={{
+    //                                     width: 18,
+    //                                     height: 18,
+    //                                     tintColor: '#FF8C00',
+    //                                     resizeMode: 'contain',
+    //                                 }}
+    //                             />
+    //                             <Text style={styles.locationDetailText} numberOfLines={2}>
+    //                                 {tempLocation}
+    //                             </Text>
+    //                         </View>
+    //                         {tempArea && (
+    //                             <View style={styles.locationDetailRow}>
+    //                                 <Image
+    //                                     source={require('../../asset/location-outline.png')}
+    //                                     style={{
+    //                                         width: 16,
+    //                                         height: 16,
+    //                                         tintColor: '#999',
+    //                                         resizeMode: 'contain',
+    //                                     }}
+    //                                 />
+    //                                 <Text style={styles.locationDetailSubText}>
+    //                                     Area: {tempArea} {tempPincode ? `• ${tempPincode}` : ''}
+    //                                 </Text>
+    //                             </View>
+    //                         )}
+    //                     </View>
+    //                 )}
+
+    //                 {/* Action Buttons */}
+    //                 <View style={styles.locationModalActions}>
+    //                     <TouchableOpacity
+    //                         style={[styles.locationModalButton, styles.locationCurrentButton]}
+    //                         onPress={fetchCurrentLocationForModal}
+    //                         disabled={isFetchingLocation}
+    //                     >
+    //                         <Image
+    //                             source={require('../../asset/location-outline.png')}
+    //                             style={{
+    //                                 width: 18,
+    //                                 height: 18,
+    //                                 tintColor: '#FF8C00',
+    //                                 resizeMode: 'contain',
+    //                             }}
+    //                         />
+    //                         <Text style={styles.locationCurrentButtonText}>
+    //                             {isFetchingLocation ? 'Getting...' : 'Current Location'}
+    //                         </Text>
+    //                     </TouchableOpacity>
+
+    //                     <TouchableOpacity
+    //                         style={[styles.locationModalButton, styles.locationSaveButton]}
+    //                         onPress={handleSaveLocationFromModal}
+    //                     >
+    //                         <Text style={styles.locationSaveButtonText}>Save Location</Text>
+    //                     </TouchableOpacity>
+    //                 </View>
+    //             </View>
+    //         </View>
+
+
+
+    //     </Modal>
+    // );
+
+
+
     const renderLocationModal = () => (
         <Modal
             visible={showLocationModal}
             transparent
             animationType="slide"
-            onRequestClose={() => setShowLocationModal(false)}
+            onRequestClose={() => {
+                if (!isUpdatingLocation) {
+                    setShowLocationModal(false);
+                }
+            }}
         >
             <View style={styles.locationModalOverlay}>
+
                 <View style={styles.locationModalContent}>
-                    <View style={styles.locationModalHandle} />
-                    <ScrollView
-                        style={styles.locationModalScroll}
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        nestedScrollEnabled={true}
-                    >
-                        <View style={styles.locationModalHeader}>
-                            <Text style={styles.locationModalTitle}>Select Location</Text>
-                            <TouchableOpacity onPress={() => setShowLocationModal(false)}>
-                                <Image
-                                    source={require('../../asset/close.png')}
-                                    style={{
-                                        width: 24,
-                                        height: 24,
-                                        tintColor: '#666',
-                                        resizeMode: 'contain',
-                                    }}
-                                />
-                            </TouchableOpacity>
-                        </View>
-                    </ScrollView>
 
+                    {/* ================= HEADER ================= */}
+                    <View style={styles.locationModalHeader}>
+                        <Text style={styles.locationModalTitle}>
+                            Select Location
+                        </Text>
 
-                    {/* Search Input */}
+                        <TouchableOpacity
+                            disabled={isUpdatingLocation}
+                            onPress={() => {
+                                if (!isUpdatingLocation) {
+                                    setShowLocationModal(false);
+                                }
+                            }}
+                        >
+                            <Image
+                                source={require('../../asset/close.png')}
+                                style={{
+                                    width: 24,
+                                    height: 24,
+                                    tintColor: '#666',
+                                    resizeMode: 'contain',
+                                    opacity: isUpdatingLocation ? 0.4 : 1,
+                                }}
+                            />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* ================= SEARCH INPUT ================= */}
                     <View style={styles.locationSearchWrapper}>
                         <Image
                             source={require('../../asset/search.png')}
@@ -2677,6 +3442,7 @@ const ProfileScreen = ({ navigation }) => {
                                 marginRight: 10,
                             }}
                         />
+
                         <TextInput
                             style={styles.locationSearchInput}
                             placeholder="Search location..."
@@ -2687,99 +3453,175 @@ const ProfileScreen = ({ navigation }) => {
                             autoCapitalize="none"
                             returnKeyType="search"
                             clearButtonMode="while-editing"
+                            editable={!isUpdatingLocation}
                         />
+
                         {isSearchingLocation && (
-                            <ActivityIndicator size="small" color="#FF8C00" style={{ marginLeft: 8 }} />
-                        )}
-                        {searchLocationText.length > 0 && !isSearchingLocation && (
-                            <TouchableOpacity
-                                onPress={() => {
-                                    setSearchLocationText('');
-                                    setLocationSuggestions([]);
-                                    setShowLocationSuggestions(false);
-                                }}
+                            <ActivityIndicator
+                                size="small"
+                                color="#FF8C00"
                                 style={{ marginLeft: 8 }}
-                            >
-                                <Image
-                                    source={require('../../asset/edit.png')}
-                                    style={{
-                                        width: 20,
-                                        height: 20,
-                                        tintColor: '#999',
-                                        resizeMode: 'contain',
-                                    }}
-                                />
-                            </TouchableOpacity>
+                            />
                         )}
+
+                        {searchLocationText.length > 0 &&
+                            !isSearchingLocation && (
+                                <TouchableOpacity
+                                    disabled={isUpdatingLocation}
+                                    onPress={() => {
+                                        setSearchLocationText('');
+                                        setLocationSuggestions([]);
+                                        setShowLocationSuggestions(false);
+                                    }}
+                                    style={{ marginLeft: 8 }}
+                                >
+                                    <Image
+                                        source={require('../../asset/edit.png')}
+                                        style={{
+                                            width: 20,
+                                            height: 20,
+                                            tintColor: '#999',
+                                            resizeMode: 'contain',
+                                        }}
+                                    />
+                                </TouchableOpacity>
+                            )}
                     </View>
 
-                    {/* Location Suggestions */}
-                    {showLocationSuggestions && locationSuggestions.length > 0 && (
-                        <View style={styles.locationSuggestionsContainer}>
-                            <ScrollView
-                                style={styles.locationSuggestionsList}
-                                nestedScrollEnabled={true}
-                                keyboardShouldPersistTaps="handled"
-                                showsVerticalScrollIndicator={true}
+                    {/* ================= LOCATION SUGGESTIONS ================= */}
+                    {showLocationSuggestions &&
+                        locationSuggestions.length > 0 && (
+                            <View
+                                style={
+                                    styles.locationSuggestionsContainer
+                                }
                             >
-                                {locationSuggestions.map((item, index) => (
-                                    <TouchableOpacity
-                                        key={`${item.place_id}-${index}`}
-                                        style={styles.locationSuggestionItem}
-                                        onPress={() => handleLocationSelect(item)}
-                                        activeOpacity={0.7}
-                                    >
-                                        <View style={styles.locationSuggestionIconContainer}>
-                                            <Image
-                                                source={require('../../asset/location-outline.png')}
-                                                style={{
-                                                    width: 18,
-                                                    height: 18,
-                                                    tintColor: '#FF8C00',
-                                                    resizeMode: 'contain',
-                                                }}
-                                            />
-                                        </View>
-                                        <View style={styles.locationSuggestionTextContainer}>
-                                            <Text style={styles.locationSuggestionTitle} numberOfLines={1}>
-                                                {item.structured_formatting?.main_text || item.description}
-                                            </Text>
-                                            <Text style={styles.locationSuggestionAddress} numberOfLines={1}>
-                                                {item.structured_formatting?.secondary_text || ''}
-                                            </Text>
-                                        </View>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-                        </View>
-                    )}
+                                <ScrollView
+                                    style={
+                                        styles.locationSuggestionsList
+                                    }
+                                    nestedScrollEnabled={true}
+                                    keyboardShouldPersistTaps="handled"
+                                    showsVerticalScrollIndicator={true}
+                                >
+                                    {locationSuggestions.map(
+                                        (item, index) => (
+                                            <TouchableOpacity
+                                                key={`${item.place_id}-${index}`}
+                                                style={
+                                                    styles.locationSuggestionItem
+                                                }
+                                                disabled={
+                                                    isUpdatingLocation
+                                                }
+                                                onPress={() =>
+                                                    handleLocationSelect(
+                                                        item
+                                                    )
+                                                }
+                                                activeOpacity={0.7}
+                                            >
+                                                <View
+                                                    style={
+                                                        styles.locationSuggestionIconContainer
+                                                    }
+                                                >
+                                                    <Image
+                                                        source={require('../../asset/location-outline.png')}
+                                                        style={{
+                                                            width: 18,
+                                                            height: 18,
+                                                            tintColor:
+                                                                '#FF8C00',
+                                                            resizeMode:
+                                                                'contain',
+                                                        }}
+                                                    />
+                                                </View>
 
-                    {/* Map View */}
-                    {/* Map View */}
+                                                <View
+                                                    style={
+                                                        styles.locationSuggestionTextContainer
+                                                    }
+                                                >
+                                                    <Text
+                                                        style={
+                                                            styles.locationSuggestionTitle
+                                                        }
+                                                        numberOfLines={1}
+                                                    >
+                                                        {item
+                                                            .structured_formatting
+                                                            ?.main_text ||
+                                                            item.description}
+                                                    </Text>
+
+                                                    <Text
+                                                        style={
+                                                            styles.locationSuggestionAddress
+                                                        }
+                                                        numberOfLines={1}
+                                                    >
+                                                        {item
+                                                            .structured_formatting
+                                                            ?.secondary_text ||
+                                                            ''}
+                                                    </Text>
+                                                </View>
+                                            </TouchableOpacity>
+                                        )
+                                    )}
+                                </ScrollView>
+                            </View>
+                        )}
+
+                    {/* ================= MAP ================= */}
                     <View style={styles.locationMapContainer}>
                         {tempLatitude && tempLongitude ? (
                             <MapView
                                 style={styles.locationMap}
-                                region={mapRegion || {
-                                    latitude: tempLatitude,
-                                    longitude: tempLongitude,
-                                    latitudeDelta: 0.005,
-                                    longitudeDelta: 0.005,
-                                }}
-                                onRegionChangeComplete={(region) => {
-                                    // Only update when region changes significantly
-                                    const latDiff = Math.abs(region.latitude - tempLatitude);
-                                    const lngDiff = Math.abs(region.longitude - tempLongitude);
-                                    if (latDiff > 0.0001 || lngDiff > 0.0001) {
-                                        setTempLatitude(region.latitude);
-                                        setTempLongitude(region.longitude);
+                                region={
+                                    mapRegion || {
+                                        latitude: tempLatitude,
+                                        longitude: tempLongitude,
+                                        latitudeDelta: 0.005,
+                                        longitudeDelta: 0.005,
+                                    }
+                                }
+                                onRegionChangeComplete={region => {
+                                    if (isUpdatingLocation) {
+                                        return;
+                                    }
+
+                                    const latDiff = Math.abs(
+                                        region.latitude -
+                                        tempLatitude
+                                    );
+
+                                    const lngDiff = Math.abs(
+                                        region.longitude -
+                                        tempLongitude
+                                    );
+
+                                    if (
+                                        latDiff > 0.0001 ||
+                                        lngDiff > 0.0001
+                                    ) {
+                                        setTempLatitude(
+                                            region.latitude
+                                        );
+
+                                        setTempLongitude(
+                                            region.longitude
+                                        );
+
                                         setMapRegion(region);
                                     }
                                 }}
                                 showsUserLocation={true}
                                 showsMyLocationButton={true}
-                                zoomEnabled={true}
-                                scrollEnabled={true}
+                                zoomEnabled={!isUpdatingLocation}
+                                scrollEnabled={!isUpdatingLocation}
                                 onMapReady={() => {
                                     console.log('Map ready');
                                 }}
@@ -2790,36 +3632,73 @@ const ProfileScreen = ({ navigation }) => {
                                         longitude: tempLongitude,
                                     }}
                                     title="Selected Location"
-                                    description={tempLocation || 'Your location'}
-                                    draggable
-                                    onDragEnd={(e) => {
-                                        const { latitude, longitude } = e.nativeEvent.coordinate;
+                                    description={
+                                        tempLocation ||
+                                        'Your location'
+                                    }
+                                    draggable={!isUpdatingLocation}
+                                    onDragEnd={e => {
+                                        if (isUpdatingLocation) {
+                                            return;
+                                        }
+
+                                        const {
+                                            latitude,
+                                            longitude,
+                                        } =
+                                            e.nativeEvent.coordinate;
+
                                         setTempLatitude(latitude);
                                         setTempLongitude(longitude);
-                                        // Update map region
+
                                         setMapRegion({
-                                            latitude: latitude,
-                                            longitude: longitude,
+                                            latitude,
+                                            longitude,
                                             latitudeDelta: 0.005,
                                             longitudeDelta: 0.005,
                                         });
-                                        // Reverse geocode
-                                        reverseGeocodeLocation(latitude, longitude);
+
+                                        reverseGeocodeLocation(
+                                            latitude,
+                                            longitude
+                                        );
                                     }}
                                 />
                             </MapView>
                         ) : (
-                            <View style={styles.locationMapLoading}>
-                                <ActivityIndicator size="large" color="#FF8C00" />
-                                <Text style={styles.locationMapLoadingText}>Loading map...</Text>
+                            <View
+                                style={
+                                    styles.locationMapLoading
+                                }
+                            >
+                                <ActivityIndicator
+                                    size="large"
+                                    color="#FF8C00"
+                                />
+
+                                <Text
+                                    style={
+                                        styles.locationMapLoadingText
+                                    }
+                                >
+                                    Loading map...
+                                </Text>
                             </View>
                         )}
                     </View>
 
-                    {/* Location Details */}
+                    {/* ================= LOCATION DETAILS ================= */}
                     {tempLocation && (
-                        <View style={styles.locationDetailsCard}>
-                            <View style={styles.locationDetailRow}>
+                        <View
+                            style={
+                                styles.locationDetailsCard
+                            }
+                        >
+                            <View
+                                style={
+                                    styles.locationDetailRow
+                                }
+                            >
                                 <Image
                                     source={require('../../asset/location-outline.png')}
                                     style={{
@@ -2829,12 +3708,23 @@ const ProfileScreen = ({ navigation }) => {
                                         resizeMode: 'contain',
                                     }}
                                 />
-                                <Text style={styles.locationDetailText} numberOfLines={2}>
+
+                                <Text
+                                    style={
+                                        styles.locationDetailText
+                                    }
+                                    numberOfLines={2}
+                                >
                                     {tempLocation}
                                 </Text>
                             </View>
+
                             {tempArea && (
-                                <View style={styles.locationDetailRow}>
+                                <View
+                                    style={
+                                        styles.locationDetailRow
+                                    }
+                                >
                                     <Image
                                         source={require('../../asset/location-outline.png')}
                                         style={{
@@ -2844,20 +3734,46 @@ const ProfileScreen = ({ navigation }) => {
                                             resizeMode: 'contain',
                                         }}
                                     />
-                                    <Text style={styles.locationDetailSubText}>
-                                        Area: {tempArea} {tempPincode ? `• ${tempPincode}` : ''}
+
+                                    <Text
+                                        style={
+                                            styles.locationDetailSubText
+                                        }
+                                    >
+                                        Area: {tempArea}
+                                        {tempPincode
+                                            ? ` • ${tempPincode}`
+                                            : ''}
                                     </Text>
                                 </View>
                             )}
                         </View>
                     )}
 
-                    {/* Action Buttons */}
-                    <View style={styles.locationModalActions}>
+                    {/* ================= ACTION BUTTONS ================= */}
+                    <View
+                        style={
+                            styles.locationModalActions
+                        }
+                    >
                         <TouchableOpacity
-                            style={[styles.locationModalButton, styles.locationCurrentButton]}
-                            onPress={fetchCurrentLocationForModal}
-                            disabled={isFetchingLocation}
+                            style={[
+                                styles.locationModalButton,
+                                styles.locationCurrentButton,
+                                (
+                                    isFetchingLocation ||
+                                    isUpdatingLocation
+                                ) && {
+                                    opacity: 0.6,
+                                },
+                            ]}
+                            onPress={
+                                fetchCurrentLocationForModal
+                            }
+                            disabled={
+                                isFetchingLocation ||
+                                isUpdatingLocation
+                            }
                         >
                             <Image
                                 source={require('../../asset/location-outline.png')}
@@ -2868,23 +3784,91 @@ const ProfileScreen = ({ navigation }) => {
                                     resizeMode: 'contain',
                                 }}
                             />
-                            <Text style={styles.locationCurrentButtonText}>
-                                {isFetchingLocation ? 'Getting...' : 'Current Location'}
+
+                            <Text
+                                style={
+                                    styles.locationCurrentButtonText
+                                }
+                            >
+                                {isFetchingLocation
+                                    ? 'Getting...'
+                                    : 'Current Location'}
                             </Text>
                         </TouchableOpacity>
 
                         <TouchableOpacity
-                            style={[styles.locationModalButton, styles.locationSaveButton]}
-                            onPress={handleSaveLocationFromModal}
+                            style={[
+                                styles.locationModalButton,
+                                styles.locationSaveButton,
+                                isUpdatingLocation && {
+                                    opacity: 0.6,
+                                },
+                            ]}
+                            disabled={isUpdatingLocation}
+                            onPress={
+                                handleSaveLocationFromModal
+                            }
                         >
-                            <Text style={styles.locationSaveButtonText}>Save Location</Text>
+                            <Text
+                                style={
+                                    styles.locationSaveButtonText
+                                }
+                            >
+                                {isUpdatingLocation
+                                    ? 'Updating...'
+                                    : 'Save Location'}
+                            </Text>
                         </TouchableOpacity>
                     </View>
+
+                    {/* ================= UPDATE LOADER ================= */}
+                    {isUpdatingLocation && (
+                        <View
+                            style={
+                                styles.locationLoadingOverlay
+                            }
+                        >
+                            <View
+                                style={
+                                    styles.experienceLoadingBox
+                                }
+                            >
+                                <ActivityIndicator
+                                    size="large"
+                                    color="#FF8C00"
+                                />
+
+                                <Text
+                                    style={
+                                        styles.experienceLoadingTitle
+                                    }
+                                >
+                                    Updating Location
+                                </Text>
+
+                                <Text
+                                    style={
+                                        styles.experienceLoadingProgress
+                                    }
+                                >
+                                    {locationUploadProgress}%
+                                </Text>
+
+                                <Text
+                                    style={
+                                        styles.experienceLoadingSubtitle
+                                    }
+                                >
+                                    Please wait...
+                                </Text>
+                            </View>
+                        </View>
+                    )}
+
                 </View>
             </View>
         </Modal>
     );
-
     const renderSkillBottomSheet = () => (
         <Modal
             transparent={true}
@@ -3064,18 +4048,31 @@ const ProfileScreen = ({ navigation }) => {
             visible={showRefNumberModal}
             transparent
             animationType="fade"
-            onRequestClose={() => setShowRefNumberModal(false)}
+            onRequestClose={() => {
+                if (!isUpdatingDocument) {
+                    setShowRefNumberModal(false);
+                }
+            }}
         >
-            <TouchableOpacity
-                style={styles.modalOverlay}
-                activeOpacity={1}
-                onPress={() => setShowRefNumberModal(false)}
-            >
-                <View style={styles.refModalContent}>
+            <View style={styles.modalOverlay}>
+
+                <View
+                    style={[
+                        styles.refModalContent,
+                        { position: 'relative' }
+                    ]}
+                >
                     <View style={styles.refModalHeader}>
-                        <Text style={styles.refModalTitle}>Enter Reference Number</Text>
+                        <Text style={styles.refModalTitle}>
+                            {isEditingReferenceNumber
+                                ? 'Change Reference Number'
+                                : 'Enter Reference Number'}
+                        </Text>
+
                         <Text style={styles.refModalSubtitle}>
-                            Please enter the document reference number before uploading
+                            {isEditingReferenceNumber
+                                ? 'Update the document reference number'
+                                : 'Please enter the document reference number before uploading'}
                         </Text>
                     </View>
 
@@ -3088,17 +4085,35 @@ const ProfileScreen = ({ navigation }) => {
                         autoFocus
                         keyboardType="default"
                         autoCapitalize="characters"
+                        editable={!isUpdatingDocument}
                     />
 
                     <View style={styles.refModalActions}>
+
                         <TouchableOpacity
-                            style={[styles.refModalButton, styles.refCancelButton]}
-                            onPress={() => setShowRefNumberModal(false)}
+                            style={[
+                                styles.refModalButton,
+                                styles.refCancelButton,
+                            ]}
+                            disabled={isUpdatingDocument}
+                            onPress={() =>
+                                setShowRefNumberModal(false)
+                            }
                         >
-                            <Text style={styles.refCancelText}>Cancel</Text>
+                            <Text style={styles.refCancelText}>
+                                Cancel
+                            </Text>
                         </TouchableOpacity>
+
                         <TouchableOpacity
-                            style={[styles.refModalButton, styles.refSaveButton]}
+                            style={[
+                                styles.refModalButton,
+                                styles.refSaveButton,
+                                isUpdatingDocument && {
+                                    opacity: 0.6,
+                                },
+                            ]}
+                            disabled={isUpdatingDocument}
                             onPress={
                                 isEditingReferenceNumber
                                     ? handleUpdateReferenceNumber
@@ -3106,12 +4121,21 @@ const ProfileScreen = ({ navigation }) => {
                             }
                         >
                             <Text style={styles.refSaveText}>
-                                {isEditingReferenceNumber ? 'Update' : 'Continue'}
+                                {isUpdatingDocument
+                                    ? 'Updating...'
+                                    : isEditingReferenceNumber
+                                        ? 'Update'
+                                        : 'Continue'}
                             </Text>
                         </TouchableOpacity>
+
                     </View>
+
+                    {/* ================= DOCUMENT UPDATE LOADER ================= */}
+                   
+
                 </View>
-            </TouchableOpacity>
+            </View>
         </Modal>
     );
 
@@ -3243,10 +4267,10 @@ const ProfileScreen = ({ navigation }) => {
                                                     resizeMode: 'contain',
                                                 }}
                                             />
-                                            <Text style={styles.documentModalActionText}>Edit</Text>
+                                            <Text style={styles.documentModalActionText}>Edit Document</Text>
                                         </TouchableOpacity>
                                     )}
-                                    {selectedDocument.uploaded && (
+                                    {/* {selectedDocument.uploaded && !selectedDocument.verified && (
                                         <TouchableOpacity
                                             style={[styles.documentModalAction, styles.deleteAction]}
                                             onPress={() => {
@@ -3265,7 +4289,7 @@ const ProfileScreen = ({ navigation }) => {
                                             />
                                             <Text style={styles.documentModalActionText}>Delete</Text>
                                         </TouchableOpacity>
-                                    )}
+                                    )} */}
                                 </View>
 
                                 <TouchableOpacity
@@ -3285,16 +4309,8 @@ const ProfileScreen = ({ navigation }) => {
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor={ORANGE_COLOR} />
             {isProfileLoading ? (
-                <View style={styles.profileLoadingContainer}>
-                    <ActivityIndicator
-                        size="large"
-                        color={ORANGE_COLOR}
-                    />
-                    <Text style={styles.profileLoadingText}>
-                        Loading profile...
-                    </Text>
-                </View>
-                // <Loader visible={isProfileLoading} message="Please wait..." />
+
+                <Loader />
             ) : (
                 <>
                     {/* Curved Orange Toolbar */}
@@ -3774,9 +4790,7 @@ const ProfileScreen = ({ navigation }) => {
                                                     experienceYears === year && styles.experienceOptionSelected,
                                                 ]}
                                                 onPress={() => {
-                                                    setExperienceYears(year);
-                                                    setExperience(year === '10+' ? '10+ years' : `${year} years`);
-                                                    setShowExperienceModal(false);
+                                                    updateExperience(year);
                                                 }}
                                             >
                                                 <Text style={[
@@ -3795,8 +4809,37 @@ const ProfileScreen = ({ navigation }) => {
                                     >
                                         <Text style={styles.experienceCancelText}>Cancel</Text>
                                     </TouchableOpacity>
+
+
+
                                 </View>
                             </TouchableOpacity>
+
+
+                            {isUpdatingExperience && (
+                                <View style={styles.experienceLoadingOverlay}>
+                                    <View style={styles.experienceLoadingBox}>
+
+                                        <ActivityIndicator
+                                            size="large"
+                                            color="#FF8C00"
+                                        />
+
+                                        <Text style={styles.experienceLoadingTitle}>
+                                            Updating Experience
+                                        </Text>
+
+                                        <Text style={styles.experienceLoadingProgress}>
+                                            {experienceUploadProgress}%
+                                        </Text>
+
+                                        <Text style={styles.experienceLoadingSubtitle}>
+                                            Please wait...
+                                        </Text>
+
+                                    </View>
+                                </View>
+                            )}
                         </Modal>
 
                         {/* Document Modal */}
@@ -3805,6 +4848,37 @@ const ProfileScreen = ({ navigation }) => {
                         {renderSkillBottomSheet()}
                         {renderLocationModal()}
                         {renderImagePickerModal()}
+                        {renderUploadOptionsModal()}
+
+
+                        <Modal
+                            visible={isUpdatingDocument}
+                            transparent={true}
+                            animationType="fade"
+                            statusBarTranslucent={true}
+                        >
+                            <View style={styles.documentLoadingFullScreen}>
+                                <View style={styles.experienceLoadingBox}>
+                                    <ActivityIndicator
+                                        size="large"
+                                        color="#FF8C00"
+                                    />
+
+                                    <Text style={styles.experienceLoadingTitle}>
+                                        Updating Document
+                                    </Text>
+
+                                    <Text style={styles.experienceLoadingProgress}>
+                                        {documentUploadProgress}%
+                                    </Text>
+
+                                    <Text style={styles.experienceLoadingSubtitle}>
+                                        Please wait...
+                                    </Text>
+                                </View>
+                            </View>
+                        </Modal>
+
 
                         <View style={{ height: 20 }} />
                     </Animated.ScrollView>
@@ -3865,6 +4939,7 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F8F9FA',
         marginTop: 20,
+        position: 'relative',
     },
     scrollContent: {
         paddingHorizontal: 20,
@@ -4876,6 +5951,8 @@ const styles = StyleSheet.create({
         paddingTop: 12,
         paddingBottom: 20,
         maxHeight: height * 0.92,
+        position: 'relative',
+        overflow: 'hidden',
     },
     locationModalHandle: {
         width: 40,
@@ -5243,6 +6320,171 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         marginTop: 5,
     },
+
+
+    // Upload Options Modal Styles
+    uploadOptionsOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    uploadOptionsContent: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        paddingHorizontal: 24,
+        paddingTop: 12,
+        paddingBottom: 34,
+    },
+    uploadOptionsHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: '#E0E0E0',
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    uploadOptionsHeader: {
+        marginBottom: 20,
+        alignItems: 'center',
+    },
+    uploadOptionsTitle: {
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#1A1A1A',
+        textAlign: 'center',
+    },
+    uploadOptionsSubtitle: {
+        fontSize: 14,
+        color: '#888',
+        textAlign: 'center',
+        marginTop: 4,
+    },
+    uploadOptionsContainer: {
+        gap: 12,
+        marginBottom: 20,
+    },
+    uploadOptionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        padding: 14,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    uploadOptionIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 14,
+    },
+    uploadOptionTextContainer: {
+        flex: 1,
+    },
+    uploadOptionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1A1A1A',
+    },
+    uploadOptionDescription: {
+        fontSize: 12,
+        color: '#888',
+        marginTop: 2,
+    },
+    uploadOptionsCancel: {
+        backgroundColor: '#F5F5F5',
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: '#E8E8E8',
+    },
+    uploadOptionsCancelText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#666',
+    },
+    experienceLoadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 999,
+    },
+
+    experienceLoadingBox: {
+        width: 220,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 16,
+        paddingVertical: 25,
+        paddingHorizontal: 20,
+        alignItems: 'center',
+        elevation: 10,
+    },
+
+    experienceLoadingTitle: {
+        marginTop: 15,
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#222',
+    },
+
+    experienceLoadingProgress: {
+        marginTop: 8,
+        fontSize: 22,
+        fontWeight: '700',
+        color: '#FF8C00',
+    },
+
+    experienceLoadingSubtitle: {
+        marginTop: 5,
+        fontSize: 13,
+        color: '#777',
+    },
+
+    locationLoadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+
+        backgroundColor: 'rgba(0,0,0,0.45)',
+
+        justifyContent: 'center',
+        alignItems: 'center',
+
+        zIndex: 9999,
+        elevation: 9999,
+    },
+
+    documentLoadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.45)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+        elevation: 9999,
+    },
+
+    documentLoadingFullScreen: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
 
 
 });
