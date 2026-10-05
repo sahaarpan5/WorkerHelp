@@ -47,7 +47,8 @@ const ProfileScreen = ({ navigation }) => {
     const [experience, setExperience] = useState('');
     const [experienceYears, setExperienceYears] = useState('');
     const [showExperienceModal, setShowExperienceModal] = useState(false);
-    const [skills, setSkills] = useState(['Plumbing', 'Electrical', 'Cleaning']);
+    const [skills, setSkills] = useState([]);
+    const [skillList, setSkillList] = useState([]);
     const [showSkillBottomSheet, setShowSkillBottomSheet] = useState(false);
     const [selectedSkills, setSelectedSkills] = useState([]);
     const [isEditingSkills, setIsEditingSkills] = useState(false);
@@ -112,8 +113,14 @@ const ProfileScreen = ({ navigation }) => {
     const [locationUploadProgress, setLocationUploadProgress] =
         useState(0);
 
+
     const [isUpdatingDocument, setIsUpdatingDocument] = useState(false);
 
+    const [availableServices, setAvailableServices] = useState([]);
+    const [isSavingSkills, setIsSavingSkills] = useState(false);
+    const [selectedServices, setSelectedServices] = useState([]);
+
+    const [serviceSearch, setServiceSearch] = useState('');
 
     // 5 Documents
     const [uploadedDocuments, setUploadedDocuments] = useState([
@@ -275,6 +282,8 @@ const ProfileScreen = ({ navigation }) => {
     }, []);
 
     useEffect(() => {
+        fetchPartnerSkills();
+        fetchServiceCategories();
         fetchProfile();
     }, []);
 
@@ -1068,6 +1077,228 @@ const ProfileScreen = ({ navigation }) => {
             setTimeout(() => {
                 setProfileUploadProgress(0);
             }, 500);
+        }
+    };
+
+
+    const toggleServiceSelection = (serviceId) => {
+        if (selectedServices.includes(serviceId)) {
+            setSelectedServices(
+                selectedServices.filter(id => id !== serviceId)
+            );
+        } else {
+            setSelectedServices([
+                ...selectedServices,
+                serviceId
+            ]);
+        }
+    };
+
+    const handleSaveSkills = async () => {
+        try {
+            setIsSavingSkills(true);
+
+            const selectedServicesArray = availableServices
+                .filter(service =>
+                    selectedSkills.some(
+                        skill =>
+                            skill?.trim().toLowerCase() ===
+                            service.name?.trim().toLowerCase()
+                    )
+                )
+                .map(service => ({
+                    id: service.id,
+                    name: service.name,
+                }));
+
+            console.log('Selected Services:', selectedServicesArray);
+
+
+            if (selectedServicesArray.length === 0) {
+                Alert.alert(
+                    'Select Service',
+                    'Please choose at least one service.'
+                );
+                setIsSavingSkills(false);
+                return;
+            }
+
+            // Convert IDs to comma-separated string
+            const serviceCategoryIds = selectedServicesArray.map(
+                service => String(service.id)
+            );
+
+            console.log(
+                'serviceCategoryIds:',
+                serviceCategoryIds
+            );
+
+            const authToken = await AsyncStorage.getItem('token');
+
+            const response = await axios.put(
+                API.SERVICE_CATEGORY_MAPPING,
+                {
+                    serviceCategoryIds: serviceCategoryIds,
+                },
+                {
+                    headers: {
+                        Accept: 'text/plain',
+                        Authorization: `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            console.log('Save Skills Response:', "hello");
+            await fetchPartnerSkills();
+
+            setShowSkillBottomSheet(false);
+            setIsEditingSkills(false);
+
+            Alert.alert(
+                'Success',
+                'Skills updated successfully.'
+            );
+
+
+        } catch (error) {
+            console.log(
+                'Save Skills Error:',
+                error?.response?.data || error.message
+            );
+
+            Alert.alert(
+                'Error',
+                'Failed to update skills.'
+            );
+        } finally {
+            setIsSavingSkills(false);
+        }
+    };
+
+
+    const fetchPartnerSkills = async () => {
+        try {
+            setIsProfileLoading(true);
+
+            const authToken = await AsyncStorage.getItem('token');
+
+            if (!authToken) {
+                console.log('Token not found');
+                return;
+            }
+
+            const response = await axios.get(
+                API.SERVICE_CATEGORY_MAPPING,
+                {
+                    headers: {
+                        Accept: 'text/plain',
+                        Authorization: `Bearer ${authToken}`,
+                    },
+                }
+            );
+
+            console.log(
+                'Partner Skills Response:',
+                response.data
+            );
+
+            const data = Array.isArray(response.data)
+                ? response.data
+                : [];
+
+            // Keep complete API objects
+            // Example:
+            // {
+            //   serviceCategoryId: 1,
+            //   serviceCategoryName: "Home Cleaning"
+            // }
+            setSkillList(data);
+
+            // Get skill names for Profile display
+            const skillNames = data
+                .map(item => item.serviceCategoryName)
+                .filter(Boolean);
+
+            // Profile Skills section
+            setSkills(skillNames);
+
+            // IMPORTANT:
+            // Bottom sheet selection will use NAMES
+            setSelectedSkills(skillNames);
+
+            console.log(
+                'Existing Skill Names:',
+                skillNames
+            );
+
+        } catch (error) {
+            console.log(
+                'Partner Skills API Error:',
+                error?.response?.data ||
+                error?.message
+            );
+
+            setSkillList([]);
+            setSkills([]);
+            setSelectedSkills([]);
+
+        } finally {
+            setIsProfileLoading(false);
+        }
+    };
+
+
+
+
+    const fetchServiceCategories = async () => {
+        try {
+            setIsProfileLoading(true);
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                console.log('Authentication token not found');
+                setAvailableServices([]);
+                return;
+            }
+
+            const response = await axios.get(
+                API.SERVICE_CATEGORY_DROPDOWN,
+                {
+                    headers: {
+                        Accept: 'text/plain',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            console.log(
+                'Service Category Response:',
+                response.data
+            );
+
+            const categories = Array.isArray(response.data)
+                ? response.data
+                : [];
+
+            const formattedServices = categories.map((item, index) => ({
+                id: item.serviceCategoryId,
+                name: item.categoryName,
+                icon: require('../../asset/settings.png'),
+                category: item.categoryName,
+            }));
+
+            setAvailableServices(formattedServices);
+
+        } catch (error) {
+            console.log(
+                'Service Category API Error:',
+                error?.response?.data || error?.message
+            );
+
+            setAvailableServices([]);
+        } finally {
+
         }
     };
 
@@ -1926,37 +2157,120 @@ const ProfileScreen = ({ navigation }) => {
 
 
     const handleOpenSkillBottomSheet = () => {
+        // selectedSkills already contains skill names
         setSelectedSkills([...skills]);
+
         setIsEditingSkills(false);
         setShowSkillBottomSheet(true);
-        setTimeout(() => animateBottomSheetIn(), 100);
+
+        setTimeout(() => {
+            animateBottomSheetIn();
+        }, 100);
     };
 
     const handleEditSkills = () => {
         setSelectedSkills([...skills]);
-        setIsEditingSkills(true);
+
+        setIsEditingSkills(false);
         setShowSkillBottomSheet(true);
-        setTimeout(() => animateBottomSheetIn(), 100);
+
+        setTimeout(() => {
+            animateBottomSheetIn();
+        }, 100);
     };
 
-    const toggleSkillSelection = (skill) => {
-        if (selectedSkills.includes(skill)) {
-            setSelectedSkills(selectedSkills.filter(s => s !== skill));
-        } else {
-            setSelectedSkills([...selectedSkills, skill]);
-        }
-    };
-
-    const handleSaveSkills = () => {
-        if (selectedSkills.length === 0) {
-            Alert.alert('Required', 'Please select at least one skill');
+    const toggleSkillSelection = (serviceName) => {
+        if (!serviceName) {
             return;
         }
-        setSkills([...selectedSkills]);
-        setShowSkillBottomSheet(false);
-        setIsEditingSkills(false);
-        Alert.alert('Success', 'Skills updated successfully!');
+
+        const normalizedName = serviceName.trim().toLowerCase();
+
+        const selectedService = availableServices.find(
+            service =>
+                service.name?.trim().toLowerCase() === normalizedName
+        );
+
+        if (!selectedService) {
+            console.log('Service not found:', serviceName);
+            return;
+        }
+
+        const alreadySelected = selectedSkills.some(
+            skill =>
+                skill?.trim().toLowerCase() === normalizedName
+        );
+
+        if (alreadySelected) {
+            // Remove service
+            setSelectedSkills(prev => {
+                const updatedSkills = prev.filter(
+                    skill =>
+                        skill?.trim().toLowerCase() !== normalizedName
+                );
+
+                // Print remaining selected services with ID + name
+                const selectedServicesArray = availableServices
+                    .filter(service =>
+                        updatedSkills.some(
+                            skill =>
+                                skill?.trim().toLowerCase() ===
+                                service.name?.trim().toLowerCase()
+                        )
+                    )
+                    .map(service => ({
+                        id: service.id,
+                        name: service.name,
+                    }));
+
+                console.log(
+                    'Selected Services:',
+                    selectedServicesArray
+                );
+
+                return updatedSkills;
+            });
+        } else {
+            // Add service
+            setSelectedSkills(prev => {
+                const updatedSkills = [
+                    ...prev,
+                    serviceName.trim(),
+                ];
+
+                // Print ALL selected services with ID + name
+                const selectedServicesArray = availableServices
+                    .filter(service =>
+                        updatedSkills.some(
+                            skill =>
+                                skill?.trim().toLowerCase() ===
+                                service.name?.trim().toLowerCase()
+                        )
+                    )
+                    .map(service => ({
+                        id: service.id,
+
+                    }));
+
+                console.log(
+                    'Selected Services:',
+                    selectedServicesArray
+                );
+
+                return updatedSkills;
+            });
+        }
     };
+
+    const selectedSkillObjects = skillList.filter(item =>
+        selectedSkills.includes(item.serviceCategoryName)
+    );
+
+    const selectedSkillIds = selectedSkillObjects.map(
+        item => item.serviceCategoryId
+    );
+
+
 
     const handleRemoveSkill = (skillToRemove) => {
         Alert.alert(
@@ -3869,145 +4183,140 @@ const ProfileScreen = ({ navigation }) => {
             </View>
         </Modal>
     );
-    const renderSkillBottomSheet = () => (
-        <Modal
-            transparent={true}
-            visible={showSkillBottomSheet}
-            animationType="none"
-            onRequestClose={() => {
-                animateBottomSheetOut(() => setShowSkillBottomSheet(false));
-            }}
-        >
-            <TouchableOpacity
-                style={styles.bottomSheetOverlay}
-                activeOpacity={1}
-                onPress={() => {
-                    animateBottomSheetOut(() => setShowSkillBottomSheet(false));
-                }}
-            >
-                <TouchableWithoutFeedback>
-                    <Animated.View
-                        style={[
-                            styles.bottomSheetContent,
-                            { transform: [{ translateY: bottomSheetAnim }] }
-                        ]}
-                    >
-                        <View style={styles.bottomSheetHandle} />
 
-                        <View style={styles.bottomSheetHeader}>
-                            <Text style={styles.bottomSheetTitle}>
-                                {isEditingSkills ? 'Edit Skills' : 'Select Skills'}
-                            </Text>
-                            <Text style={styles.bottomSheetSubtitle}>
-                                {isEditingSkills
-                                    ? 'Modify your skills (select/deselect)'
-                                    : 'Select skills you want to add'}
-                            </Text>
-                            <View style={styles.bottomSheetCount}>
-                                <Text style={styles.bottomSheetCountText}>
-                                    {selectedSkills.length} skill{selectedSkills.length !== 1 ? 's' : ''} selected
-                                </Text>
-                            </View>
-                        </View>
 
-                        <ScrollView
-                            style={styles.bottomSheetScroll}
-                            showsVerticalScrollIndicator={false}
-                        >
-                            {/* Selected Skills Tags */}
-                            {selectedSkills.length > 0 && (
-                                <View style={styles.bottomSheetSelectedTags}>
-                                    {selectedSkills.map((skill) => (
-                                        <View key={skill} style={styles.bottomSheetTag}>
-                                            <Text style={styles.bottomSheetTagText}>{skill}</Text>
-                                            <TouchableOpacity
-                                                onPress={() => toggleSkillSelection(skill)}
-                                            >
-                                                <Image
-                                                    source={require('../../asset/close.png')}
-                                                    style={{
-                                                        width: 14,
-                                                        height: 14,
-                                                        tintColor: '#FF8C00',
-                                                        resizeMode: 'contain',
-                                                    }}
-                                                />
-                                            </TouchableOpacity>
-                                        </View>
-                                    ))}
-                                </View>
-                            )}
 
-                            {/* Skills Grid */}
-                            <View style={styles.bottomSheetGrid}>
-                                {availableSkillsList.map((skill) => {
-                                    const isSelected = selectedSkills.includes(skill);
-                                    return (
-                                        <TouchableOpacity
-                                            key={skill}
-                                            style={[
-                                                styles.bottomSheetSkillItem,
-                                                isSelected && styles.bottomSheetSkillItemSelected,
-                                            ]}
-                                            onPress={() => toggleSkillSelection(skill)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <View style={styles.bottomSheetSkillLeft}>
-                                                <Text style={styles.bottomSheetSkillIcon}>🔧</Text>
-                                                <Text style={[
-                                                    styles.bottomSheetSkillText,
-                                                    isSelected && styles.bottomSheetSkillTextSelected,
-                                                ]}>
-                                                    {skill}
-                                                </Text>
-                                            </View>
-                                            <View style={[
-                                                styles.bottomSheetCheckbox,
-                                                isSelected && styles.bottomSheetCheckboxSelected,
-                                            ]}>
-                                                {isSelected && (
-                                                    <Image
-                                                        source={require('../../asset/check.png')}
-                                                        style={{
-                                                            width: 12,
-                                                            height: 12,
-                                                            tintColor: '#FFFFFF',
-                                                            resizeMode: 'contain',
-                                                        }}
-                                                    />
-                                                )}
-                                            </View>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                        </ScrollView>
 
-                        <View style={styles.bottomSheetActions}>
-                            <TouchableOpacity
-                                style={[styles.bottomSheetButton, styles.bottomSheetCancelButton]}
-                                onPress={() => {
-                                    animateBottomSheetOut(() => setShowSkillBottomSheet(false));
-                                }}
-                            >
-                                <Text style={styles.bottomSheetCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.bottomSheetButton, styles.bottomSheetSaveButton]}
-                                onPress={handleSaveSkills}
-                            >
-                                <Text style={styles.bottomSheetSaveText}>
-                                    {isEditingSkills ? 'Update Skills' : 'Add Skills'}
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                    </Animated.View>
-                </TouchableWithoutFeedback>
-            </TouchableOpacity>
-        </Modal>
-    );
+
+
 
     // Render stars
+
+
+    const renderSkillBottomSheet = () => {
+        const filteredServices = availableServices.filter(service =>
+            service.name
+                ?.toLowerCase()
+                .includes(serviceSearch.toLowerCase())
+        );
+
+        return (
+            <Modal
+                visible={showSkillBottomSheet}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowSkillBottomSheet(false)}
+            >
+                <View style={styles.bottomSheetOverlay}>
+
+                    <View style={styles.skillBottomSheet}>
+
+                        {/* Header */}
+                        <View style={styles.skillSheetHeader}>
+                            <Text style={styles.skillSheetTitle}>
+                                Select Services
+                            </Text>
+
+                            <TouchableOpacity
+                                onPress={() =>
+                                    setShowSkillBottomSheet(false)
+                                }
+                            >
+                                <Text style={styles.skillSheetClose}>
+                                    ✕
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Search */}
+                        <View style={styles.skillSearchContainer}>
+                            <TextInput
+                                value={serviceSearch}
+                                onChangeText={setServiceSearch}
+                                placeholder="Search services..."
+                                placeholderTextColor="#999"
+                                style={styles.skillSearchInput}
+                            />
+                        </View>
+
+                        {/* Loading */}
+                        <FlatList
+                            data={filteredServices}
+                            keyExtractor={(item) => String(item.id)}
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={{
+                                paddingBottom: 20,
+                            }}
+                            renderItem={({ item }) => {
+                                const isSelected = selectedSkills.some(
+                                    skill =>
+                                        skill?.trim().toLowerCase() ===
+                                        item.name?.trim().toLowerCase()
+                                );
+
+                                return (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.skillItem,
+                                            isSelected && styles.skillItemSelected,
+                                        ]}
+                                        onPress={() => toggleSkillSelection(item.name)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <View style={styles.skillTextContainer}>
+                                            <Text
+                                                style={[
+                                                    styles.skillName,
+                                                    isSelected && styles.skillNameSelected,
+                                                ]}
+                                            >
+                                                {item.name}
+                                            </Text>
+                                        </View>
+
+                                        <View
+                                            style={[
+                                                styles.skillCheckbox,
+                                                isSelected &&
+                                                styles.skillCheckboxSelected,
+                                            ]}
+                                        >
+                                            {isSelected && (
+                                                <Text style={styles.skillCheckmark}>
+                                                    ✓
+                                                </Text>
+                                            )}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            }}
+                        />
+
+                        {/* Done */}
+                        <TouchableOpacity
+                            style={styles.skillDoneButton}
+                            onPress={handleSaveSkills}
+                            disabled={isSavingSkills}
+                        >
+                            {isSavingSkills ? (
+                                <ActivityIndicator
+                                    size="small"
+                                    color="#FFFFFF"
+                                />
+                            ) : (
+                                <Text style={styles.skillDoneButtonText}>
+                                    Done
+                                </Text>
+                            )}
+                        </TouchableOpacity>
+
+                    </View>
+                </View>
+            </Modal>
+        );
+    };
+
+
     const renderStars = (rating) => {
         const stars = [];
         const fullStars = Math.floor(rating);
@@ -4132,7 +4441,7 @@ const ProfileScreen = ({ navigation }) => {
                     </View>
 
                     {/* ================= DOCUMENT UPDATE LOADER ================= */}
-                   
+
 
                 </View>
             </View>
@@ -4571,20 +4880,7 @@ const ProfileScreen = ({ navigation }) => {
                                 {skills.map((skill, index) => (
                                     <View key={index} style={styles.skillItem}>
                                         <Text style={styles.skillText}>{skill}</Text>
-                                        <TouchableOpacity
-                                            style={styles.skillRemoveButton}
-                                            onPress={() => handleRemoveSkill(skill)}
-                                        >
-                                            <Image
-                                                source={require('../../asset/close.png')}
-                                                style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    tintColor: '#FF4444',
-                                                    resizeMode: 'contain',
-                                                }}
-                                            />
-                                        </TouchableOpacity>
+                                        
                                     </View>
                                 ))}
                                 {skills.length === 0 && (
@@ -6483,6 +6779,94 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+
+    skillDoneButton: {
+        backgroundColor: '#FF8C00',
+        height: 52,
+        borderRadius: 14,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 12,
+        marginBottom: 10,
+    },
+    skillDoneButtonText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    skillBottomSheet: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 20,
+        paddingTop: 20,
+        paddingBottom: 15,
+        height: '85%',
+    },
+
+    skillSheetHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+
+    skillSheetTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        color: '#333333',
+    },
+
+    skillSheetClose: {
+        fontSize: 22,
+        fontWeight: '600',
+        color: '#666666',
+        padding: 5,
+    },
+
+    skillSearchContainer: {
+        height: 48,
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        borderRadius: 12,
+        backgroundColor: '#F8F8F8',
+        paddingHorizontal: 14,
+        justifyContent: 'center',
+        marginBottom: 15,
+    },
+
+    skillItemSelected: {
+        backgroundColor: '#FFF3E6',
+        borderColor: '#FF8C00',
+    },
+
+    skillCheckmark: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    skillCheckbox: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        borderWidth: 1.5,
+        borderColor: '#CCCCCC',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+
+    skillCheckboxSelected: {
+        backgroundColor: '#FF8C00',
+        borderColor: '#FF8C00',
+    },
+    skillSearchInput: {
+        flex: 1,
+        fontSize: 15,
+        color: '#333333',
+        paddingVertical: 0,
     },
 
 

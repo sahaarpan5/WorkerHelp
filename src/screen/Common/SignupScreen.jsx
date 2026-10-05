@@ -103,6 +103,12 @@ const SignupScreen = ({ navigation, route }) => {
     const [serviceSearchText, setServiceSearchText] = useState('');
     const serviceModalSlideAnim = useRef(new Animated.Value(height)).current;
 
+
+    const [availableServices, setAvailableServices] = useState([]);
+    const [loadingServices, setLoadingServices] = useState(false);
+
+    const [savingServices, setSavingServices] = useState(false);
+
     const reverseGeocodeTimeout = useRef(null);
 
     const GOOGLE_MAPS_API_KEY =
@@ -130,31 +136,20 @@ const SignupScreen = ({ navigation, route }) => {
     };
 
 
-    const availableServices = [
-        { id: '1', name: 'Home Cleaning', icon: '🧹', category: 'Cleaning' },
-        { id: '2', name: 'Deep Cleaning', icon: '🧽', category: 'Cleaning' },
-        { id: '3', name: 'Carpet Cleaning', icon: '🧵', category: 'Cleaning' },
-        { id: '4', name: 'Sofa Cleaning', icon: '🛋️', category: 'Cleaning' },
-        { id: '5', name: 'AC Service', icon: '❄️', category: 'Repair' },
-        { id: '6', name: 'Plumbing', icon: '🔧', category: 'Repair' },
-        { id: '7', name: 'Electrical', icon: '⚡', category: 'Repair' },
-        { id: '8', name: 'Pest Control', icon: '🐜', category: 'Cleaning' },
-        { id: '9', name: 'Painting', icon: '🎨', category: 'Repair' },
-        { id: '10', name: 'Furniture Assembly', icon: '🪑', category: 'Repair' },
-        { id: '11', name: 'Water Purifier Service', icon: '💧', category: 'Repair' },
-        { id: '12', name: 'Gardening', icon: '🌿', category: 'Cleaning' },
-    ];
+
 
     useEffect(() => {
         const mobileNo = route.params?.mobileNo;
         const verified = route.params?.mobileVerified;
         const routeToken = route.params?.token;
         const isRegistered = route.params?.isRegistered;
+        const documentFlag = route.params?.documentFlag;
 
         console.log('Mobile No:', mobileNo);
         console.log('Mobile Verified:', verified);
         console.log('Token:', routeToken);
         console.log('Is Registered:', isRegistered);
+        console.log('Document Flag:', documentFlag);
 
         if (mobileNo) {
             setPhoneNumber(mobileNo);
@@ -170,10 +165,24 @@ const SignupScreen = ({ navigation, route }) => {
         // Already registered + mobile verified
         // → Open Documents
         if (verified === true && isRegistered === true) {
-            setCompletedSteps([0, 1, 2]);
-            setCurrentStep(3);
-            return;
+            if (documentFlag === 0) {
+                setCompletedSteps([0, 1, 2]);
+                setCurrentStep(3);
+                return;
+            }
+
+            // documentFlag = 1
+            // → Documents already completed
+            // → Open last step (Services)
+            if (documentFlag === 1) {
+                setCompletedSteps([0, 1, 2, 3]);
+                setCurrentStep(4);
+                return;
+            }
         }
+
+
+
 
         // Case 2:
         // Not registered + mobile verified
@@ -197,6 +206,72 @@ const SignupScreen = ({ navigation, route }) => {
             fetchCurrentLocation();
         }
     }, [currentStep]);
+
+
+    useEffect(() => {
+        fetchServiceCategories();
+    }, []);
+
+
+    const getServicedIcon = categoryName => {
+        const iconMap = {
+            'Home Cleaning': '🧹',
+            'Bathroom Cleaning': '🧽',
+            'Cooking': '🍳',
+            'Washing': '🧺',
+            'Home Organizing': '🗂️',
+            "Packers' Helpers": '📦',
+            'Elder Care': '👵',
+        };
+
+        return iconMap[categoryName] || '🏠';
+    };
+
+
+
+
+    const fetchServiceCategories = async () => {
+        try {
+            setLoadingServices(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            const response = await axios.get(
+                API.SERVICE_CATEGORY_DROPDOWN,
+                {
+                    headers: {
+                        Accept: 'text/plain',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            console.log('Service Category Response:', response.data);
+
+            const categories = Array.isArray(response.data)
+                ? response.data
+                : [];
+
+            const formattedServices = categories.map((item, index) => ({
+                id: item.serviceCategoryId,
+                name: item.categoryName,
+                icon: getServicedIcon(item.categoryName, index),
+                category: item.categoryName,
+            }));
+
+            setAvailableServices(formattedServices);
+
+        } catch (error) {
+            console.log(
+                'Service Category API Error:',
+                error?.response?.data || error.message
+            );
+
+            setAvailableServices([]);
+        } finally {
+            setLoadingServices(false);
+        }
+    };
 
 
     const searchLocation = (text) => {
@@ -469,15 +544,101 @@ const SignupScreen = ({ navigation, route }) => {
         });
     };
 
-    const handleCompleteServices = () => {
+    const handleCompleteServices = async () => {
         if (selectedServices.length === 0) {
-            Alert.alert('Select Services', 'Please select at least one service you want to provide');
+            Alert.alert(
+                'Select Services',
+                'Please select at least one service you want to provide'
+            );
             return;
         }
-        markStepComplete(4);
-        Alert.alert('Success!', 'Your account has been created successfully!', [
-            { text: 'Continue', onPress: () => navigation.replace('DashboardScreen') }
-        ]);
+
+        try {
+            setSavingServices(true);
+
+            const authToken =
+                token || (await AsyncStorage.getItem('token'));
+
+            if (!authToken) {
+                Alert.alert(
+                    'Error',
+                    'Authentication token not found. Please login again.'
+                );
+                return;
+            }
+
+            // selectedServices already contains serviceCategoryId values
+            const serviceCategoryIds = selectedServices.filter(Boolean);
+
+            console.log(
+                'Selected Service Category IDs:',
+                serviceCategoryIds
+            );
+
+            if (serviceCategoryIds.length === 0) {
+                Alert.alert(
+                    'Select Services',
+                    'Please select at least one valid service.'
+                );
+                return;
+            }
+
+            const payload = {
+                serviceCategoryIds: serviceCategoryIds,
+            };
+
+            console.log(
+                'Map Service Categories Payload:',
+                payload
+            );
+
+            const response = await axios.post(
+                API.SERVICE_CATEGORY_MAPPING,
+                payload,
+                {
+                    headers: {
+                        Accept: 'text/plain',
+                        Authorization: `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                }
+            );
+
+            console.log(
+                'Map Service Categories Response:',
+                response.data
+            );
+
+            if (response.data) {
+                markStepComplete(4);
+
+                Alert.alert(
+                    'Success!',
+                    'Your account has been created successfully!',
+                    [
+                        {
+                            text: 'Continue',
+                            onPress: () =>
+                                navigation.replace('DashboardScreen'),
+                        },
+                    ]
+                );
+            }
+
+        } catch (error) {
+            console.log(
+                'Map Service Categories Error:',
+                error?.response?.data || error?.message
+            );
+
+            Alert.alert(
+                'Error',
+                error?.response?.data?.message ||
+                'Failed to save your selected services. Please try again.'
+            );
+        } finally {
+            setSavingServices(false);
+        }
     };
 
     const formatDobInput = (text) => {
@@ -1003,9 +1164,9 @@ const SignupScreen = ({ navigation, route }) => {
                 password: password,
                 latitude: latitude,
                 longitude: longitude,
-                prefferedArea:area,
-                prefferedAreaAddress:location,
-                prefferedAreaPINcode:pincode
+                prefferedArea: area,
+                prefferedAreaAddress: location,
+                prefferedAreaPINcode: pincode
 
             };
 
@@ -1337,56 +1498,75 @@ const SignupScreen = ({ navigation, route }) => {
                     <Text style={styles.stepSubtitle}>Choose the services you want to provide</Text>
                 </View>
             </View>
-
-            <View style={styles.inputCard}>
-                <Text style={styles.inputLabel}>Your are interested in</Text>
-
-                <TouchableOpacity
-                    style={styles.serviceSelectionButton}
-                    onPress={openServiceModal}
-                    activeOpacity={0.8}
-                >
-                    <View style={styles.serviceSelectionLeft}>
-                        <Image
-                            source={require('../../asset/skill.png')}
-                            style={{ width: 22, height: 22, tintColor: '#FF8C00', resizeMode: 'contain' }}
-                        />
-                        <Text style={styles.serviceSelectionText}>
-                            {selectedServices.length > 0
-                                ? `${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} selected`
-                                : 'Tap to select services'}
-                        </Text>
-                    </View>
-                    <Image
-                        source={require('../../asset/arrow-forward.png')}
-                        style={{ width: 16, height: 16, tintColor: '#999', resizeMode: 'contain' }}
+            {loadingServices ? (
+                <View style={styles.serviceLoaderContainer}>
+                    <ActivityIndicator
+                        size="large"
+                        color="#FF8C00"
                     />
-                </TouchableOpacity>
-
-                {selectedServices.length > 0 && (
-                    <View style={styles.selectedServicesTags}>
-                        {selectedServices.map((serviceId) => (
-                            <View key={serviceId} style={styles.serviceTag}>
-                                <Text style={styles.serviceTagIcon}>{getServiceIcon(serviceId)}</Text>
-                                <Text style={styles.serviceTagText}>{getServiceName(serviceId)}</Text>
-                            </View>
-                        ))}
-                    </View>
-                )}
-
-                {selectedServices.length === 0 && (
-                    <Text style={styles.serviceHelperText}>
-                        Select at least one service you want to provide
+                    <Text style={styles.serviceLoaderText}>
+                        Loading services...
                     </Text>
-                )}
-            </View>
+                </View>
+            ) : (
+
+                <View style={styles.inputCard}>
+                    <Text style={styles.inputLabel}>You are interested in</Text>
+
+                    <TouchableOpacity
+                        style={styles.serviceSelectionButton}
+                        onPress={openServiceModal}
+                        activeOpacity={0.8}
+                    >
+                        <View style={styles.serviceSelectionLeft}>
+                            <Image
+                                source={require('../../asset/skill.png')}
+                                style={{ width: 22, height: 22, tintColor: '#FF8C00', resizeMode: 'contain' }}
+                            />
+                            <Text style={styles.serviceSelectionText}>
+                                {selectedServices.length > 0
+                                    ? `${selectedServices.length} service${selectedServices.length > 1 ? 's' : ''} selected`
+                                    : 'Tap to select services'}
+                            </Text>
+                        </View>
+                        <Image
+                            source={require('../../asset/arrow-forward.png')}
+                            style={{ width: 16, height: 16, tintColor: '#999', resizeMode: 'contain' }}
+                        />
+                    </TouchableOpacity>
+
+                    {selectedServices.length > 0 && (
+                        <View style={styles.selectedServicesTags}>
+                            {selectedServices.map((serviceId) => (
+                                <View key={serviceId} style={styles.serviceTag}>
+                                    <Text style={styles.serviceTagIcon}>{getServiceIcon(serviceId)}</Text>
+                                    <Text style={styles.serviceTagText}>{getServiceName(serviceId)}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
+                    {selectedServices.length === 0 && (
+                        <Text style={styles.serviceHelperText}>
+                            Select at least one service you want to provide
+                        </Text>
+                    )}
+                </View>
+            )}
 
             <TouchableOpacity
                 style={[styles.primaryButton, selectedServices.length === 0 && styles.buttonDisabled]}
                 onPress={handleCompleteServices}
                 disabled={selectedServices.length === 0}
+
+
             >
-                <Text style={styles.primaryButtonText}>Create Account →</Text>
+
+                {savingServices ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                    <Text style={styles.primaryButtonText}>Create Account →</Text>
+                )}
             </TouchableOpacity>
 
             {renderServiceModal()}
@@ -4199,6 +4379,19 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: '700',
         color: '#FFFFFF',
+    },
+
+    serviceLoaderContainer: {
+        minHeight: 180,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+
+    serviceLoaderText: {
+        marginTop: 10,
+        fontSize: 14,
+        color: '#666',
+        fontWeight: '500',
     },
 });
 

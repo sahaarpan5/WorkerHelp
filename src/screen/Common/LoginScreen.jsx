@@ -167,6 +167,139 @@ const LoginScreen = ({ navigation }) => {
 
 
 
+    // const handleOtpSubmit = async () => {
+    //     const otpString = otp.join('');
+
+    //     if (otpString.length !== 4) {
+    //         Alert.alert(
+    //             'Invalid OTP',
+    //             'Please enter the complete 4-digit OTP'
+    //         );
+    //         return;
+    //     }
+
+
+
+    //     try {
+    //         setIsLoading(true);
+
+    //         const response = await axios.post(API.VERIFY_OTP, {
+    //             mobileNo: phoneNumber,
+    //             otp: otpString,
+    //             loginType: 'Partner',
+    //         });
+
+    //         console.log('VERIFY OTP RESPONSE:', response.data);
+
+    //         if (response.data?.success === true) {
+
+
+
+    //             // New customer → Signup
+    //             if (response.data?.isRegistered === false) {
+
+    //                 navigation.replace('OnboardingScreen', {
+    //                     mobileNo: response.data?.uniqueMobileNo || phoneNumber,
+    //                     mobileVerified: response.data?.mobileVerified,
+    //                     token: response.data?.token,
+    //                     isRegistered:false
+
+    //                 });
+
+
+    //             }
+    //             // Existing customer → Dashboard
+    //             else if (response.data?.isRegistered === true) {
+    //                 const token = response.data?.token;
+    //                 const mobileNo =
+    //                     response.data?.uniqueMobileNo || phoneNumber;
+    //                 try {
+    //                     // Save login information
+    //                     await AsyncStorage.setItem(
+    //                         'customerMob',
+    //                         String(mobileNo)
+    //                     );
+
+    //                     await AsyncStorage.setItem(
+    //                         'token',
+    //                         token
+    //                     );
+
+    //                     // Get partner documents
+    //                     const documentsResponse = await axios.get(
+    //                         API.PARTNER_DOCUMENTS,
+    //                         {
+    //                             headers: {
+    //                                 Authorization: `Bearer ${token}`,
+    //                             },
+    //                         }
+    //                     );
+
+    //                     console.log(
+    //                         'PARTNER DOCUMENTS RESPONSE:',
+    //                         documentsResponse.data
+    //                     );
+
+    //                     if (
+    //                         documentsResponse.data?.success === true &&
+    //                         Array.isArray(documentsResponse.data?.documents) &&
+    //                         documentsResponse.data.documents.length > 0
+    //                     ) {
+    //                         // Documents exist → Dashboard
+    //                         navigation.replace('DashboardScreen');
+
+    //                     } else {
+    //                         // No documents → Signup
+    //                         navigation.replace('SignupScreen', {
+    //                             mobileNo: mobileNo,
+    //                             isRegistered: response.data?.isRegistered,
+    //                             token: token,
+    //                             mobileVerified: response.data?.mobileVerified,
+    //                         });
+    //                     }
+
+    //                 } catch (error) {
+
+    //                     console.log(
+    //                         'PARTNER DOCUMENTS ERROR:',
+    //                         error?.response?.data || error?.message
+    //                     );
+
+    //                     Alert.alert(
+    //                         'Error',
+    //                         error?.response?.data?.message ||
+    //                         'Unable to retrieve partner documents. Please try again.'
+    //                     );
+    //                 }
+    //             }
+
+    //         } else {
+    //             Alert.alert(
+    //                 'OTP Verification Failed',
+    //                 response.data?.message || 'Invalid OTP'
+    //             );
+    //         }
+
+    //     } catch (error) {
+
+    //         console.log(
+    //             'VERIFY OTP ERROR:',
+    //             error?.response?.data || error?.message
+    //         );
+
+    //         Alert.alert(
+    //             'Verification Failed',
+    //             error?.response?.data?.message ||
+    //             'Unable to verify OTP. Please try again.'
+    //         );
+
+    //     } finally {
+    //         setIsLoading(false);
+    //     }
+    // };
+
+
+
     const handleOtpSubmit = async () => {
         const otpString = otp.join('');
 
@@ -178,113 +311,324 @@ const LoginScreen = ({ navigation }) => {
             return;
         }
 
-
-
         try {
             setIsLoading(true);
 
-            const response = await axios.post(API.VERIFY_OTP, {
-                mobileNo: phoneNumber,
-                otp: otpString,
-                loginType: 'Partner',
-            });
-
-            console.log('VERIFY OTP RESPONSE:', response.data);
-
-            if (response.data?.success === true) {
-
-
-
-                // New customer → Signup
-                if (response.data?.isRegistered === false) {
-
-                    navigation.replace('OnboardingScreen', {
-                        mobileNo: response.data?.uniqueMobileNo || phoneNumber,
-                        mobileVerified: response.data?.mobileVerified,
-                        token: response.data?.token,
-                        isRegistered:false
-
-                    });
-
-
+            const response = await axios.post(
+                API.VERIFY_OTP,
+                {
+                    mobileNo: phoneNumber,
+                    otp: otpString,
+                    loginType: 'Partner',
                 }
-                // Existing customer → Dashboard
-                else if (response.data?.isRegistered === true) {
-                    const token = response.data?.token;
-                    const mobileNo =
-                        response.data?.uniqueMobileNo || phoneNumber;
-                    try {
-                        // Save login information
-                        await AsyncStorage.setItem(
-                            'customerMob',
-                            String(mobileNo)
-                        );
+            );
 
-                        await AsyncStorage.setItem(
-                            'token',
-                            token
-                        );
+            console.log(
+                'VERIFY OTP RESPONSE:',
+                response.data
+            );
 
-                        // Get partner documents
-                        const documentsResponse = await axios.get(
+            if (response.data?.success !== true) {
+                Alert.alert(
+                    'OTP Verification Failed',
+                    response.data?.message ||
+                    'Invalid OTP'
+                );
+                return;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | NEW PARTNER
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                response.data?.isRegistered === false
+            ) {
+                navigation.replace(
+                    'OnboardingScreen',
+                    {
+                        mobileNo:
+                            response.data
+                                ?.uniqueMobileNo ||
+                            phoneNumber,
+
+                        mobileVerified:
+                            response.data
+                                ?.mobileVerified,
+
+                        token:
+                            response.data?.token,
+
+                        isRegistered: false,
+                    }
+                );
+
+                return;
+            }
+
+            /*
+            |--------------------------------------------------------------------------
+            | EXISTING PARTNER
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                response.data?.isRegistered === true
+            ) {
+                const token =
+                    response.data?.token;
+
+                const mobileNo =
+                    response.data
+                        ?.uniqueMobileNo ||
+                    phoneNumber;
+
+                try {
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SAVE LOGIN INFORMATION
+                    |--------------------------------------------------------------------------
+                    */
+
+                    await AsyncStorage.setItem(
+                        'customerMob',
+                        String(mobileNo)
+                    );
+
+                    await AsyncStorage.setItem(
+                        'token',
+                        token
+                    );
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 1: CHECK PARTNER DOCUMENTS
+                    |--------------------------------------------------------------------------
+                    */
+
+                    const documentsResponse =
+                        await axios.get(
                             API.PARTNER_DOCUMENTS,
                             {
                                 headers: {
-                                    Authorization: `Bearer ${token}`,
+                                    Accept:
+                                        'text/plain',
+
+                                    Authorization:
+                                        `Bearer ${token}`,
                                 },
                             }
                         );
 
-                        console.log(
-                            'PARTNER DOCUMENTS RESPONSE:',
+                    console.log(
+                        'PARTNER DOCUMENTS RESPONSE:',
+                        documentsResponse.data
+                    );
+
+                    const hasDocuments =
+                        documentsResponse.data?.success ===
+                        true &&
+                        Array.isArray(
                             documentsResponse.data
+                                ?.documents
+                        ) &&
+                        documentsResponse.data
+                            .documents.length > 0;
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | NO DOCUMENTS
+                    |--------------------------------------------------------------------------
+                    |
+                    | If documents are not available,
+                    | go directly to SignupScreen.
+                    |
+                    */
+
+                    if (!hasDocuments) {
+
+                        navigation.replace(
+                            'SignupScreen',
+                            {
+                                mobileNo:
+                                    mobileNo,
+
+                                isRegistered:
+                                    response.data
+                                        ?.isRegistered,
+
+                                token:
+                                    token,
+
+                                mobileVerified:
+                                    response.data
+                                        ?.mobileVerified,
+                                documentFlag: 0,
+                            }
                         );
 
-                        if (
-                            documentsResponse.data?.success === true &&
-                            Array.isArray(documentsResponse.data?.documents) &&
-                            documentsResponse.data.documents.length > 0
-                        ) {
-                            // Documents exist → Dashboard
-                            navigation.replace('DashboardScreen');
-
-                        } else {
-                            // No documents → Signup
-                            navigation.replace('SignupScreen', {
-                                mobileNo: mobileNo,
-                                isRegistered: response.data?.isRegistered,
-                                token: token,
-                                mobileVerified: response.data?.mobileVerified,
-                            });
-                        }
-
-                    } catch (error) {
-
-                        console.log(
-                            'PARTNER DOCUMENTS ERROR:',
-                            error?.response?.data || error?.message
-                        );
-
-                        Alert.alert(
-                            'Error',
-                            error?.response?.data?.message ||
-                            'Unable to retrieve partner documents. Please try again.'
-                        );
+                        return;
                     }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | STEP 2: DOCUMENTS EXIST
+                    |--------------------------------------------------------------------------
+                    |
+                    | Now check whether partner has
+                    | mapped service categories.
+                    |
+                    */
+
+                    const serviceCategoryResponse =
+                       await axios.get(
+                            API.PARTNER_SKILL,
+                            {
+                                headers: {
+                                    Accept:
+                                        'text/plain',
+
+                                    Authorization:
+                                        `Bearer ${token}`,
+                                },
+                            }
+                        );
+
+
+                    console.log(
+                        'SERVICE CATEGORY RESPONSE:',
+                        serviceCategoryResponse.data
+                    );
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | CHECK SERVICE CATEGORY ARRAY
+                    |--------------------------------------------------------------------------
+                    */
+
+                    const serviceCategoryData =
+                        serviceCategoryResponse.data;
+
+                    /*
+                    | API can return:
+                    |
+                    | []
+                    |
+                    | or
+                    |
+                    | [
+                    |   {...},
+                    |   {...}
+                    | ]
+                    |
+                    */
+
+                    const hasMappedServiceCategories =
+                        Array.isArray(
+                            serviceCategoryData
+                        )
+                            ? serviceCategoryData.length >
+                            0
+                            : Array.isArray(
+                                serviceCategoryData?.data
+                            )
+                                ? serviceCategoryData
+                                    .data.length > 0
+                                : false;
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | EMPTY ARRAY
+                    |--------------------------------------------------------------------------
+                    |
+                    | Documents exist but no service
+                    | categories are mapped.
+                    |
+                    */
+
+                    if (
+                        !hasMappedServiceCategories
+                    ) {
+
+                        navigation.replace(
+                            'SignupScreen',
+                            {
+                                mobileNo:
+                                    mobileNo,
+
+                                isRegistered:
+                                    response.data
+                                        ?.isRegistered,
+
+                                token:
+                                    token,
+
+                                mobileVerified:
+                                    response.data
+                                        ?.mobileVerified,
+                                documentFlag:
+                                    1,
+                            }
+                        );
+
+                        return;
+                    }
+
+                    /*
+                    |--------------------------------------------------------------------------
+                    | SERVICE CATEGORIES EXIST
+                    |--------------------------------------------------------------------------
+                    |
+                    | Documents exist +
+                    | Service categories exist
+                    |
+                    | → Dashboard
+                    |
+                    */
+
+                    navigation.replace(
+                        'DashboardScreen'
+                    );
+
+                } catch (error) {
+
+                    console.log(
+                        'PARTNER LOGIN CHECK ERROR:',
+                        error?.response?.data ||
+                        error?.message
+                    );
+
+                    Alert.alert(
+                        'Error',
+                        error?.response?.data
+                            ?.message ||
+                        'Unable to retrieve partner information. Please try again.'
+                    );
                 }
 
-            } else {
-                Alert.alert(
-                    'OTP Verification Failed',
-                    response.data?.message || 'Invalid OTP'
-                );
+                return;
             }
+
+            /*
+            |--------------------------------------------------------------------------
+            | UNKNOWN REGISTRATION STATUS
+            |--------------------------------------------------------------------------
+            */
+
+            Alert.alert(
+                'Login Failed',
+                'Unable to determine partner registration status.'
+            );
 
         } catch (error) {
 
             console.log(
                 'VERIFY OTP ERROR:',
-                error?.response?.data || error?.message
+                error?.response?.data ||
+                error?.message
             );
 
             Alert.alert(
