@@ -16,11 +16,13 @@ import {
     Alert,
     TouchableWithoutFeedback,
     ImageBackground,
+    ActivityIndicator,
 } from 'react-native';
 import API from '../../util/API';
 import Loader from '../../util/Loader';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
+import MapView, { Marker } from 'react-native-maps';
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,8 +52,36 @@ const DashboardScreen = ({ navigation }) => {
     const [lastName, setLastName] = useState('');
     const [mobileNumber, setMobileNumber] = useState('');
     const [isProfileLoading, setIsProfileLoading] = useState(true);
+    const [isNewTaskLoading, setNewTaskLoading] = useState(false);
+    const [upcomingTasks, setUpcomingTasks] = useState([]);
+    const [showAllTasks, setShowAllTasks] = useState(false);
+
+    const [partnerLocation, setPartnerLocation] = useState({
+        latitude: null,
+        longitude: null,
+    });
+
+
+    const [location, setLocation] = useState({
+        latitude: null,
+        longitude: null,
+    });
 
     const [gender, setGender] = useState('');
+    const [selectedUpcomingTask, setSelectedUpcomingTask] = useState(null);
+    const [showTaskDetailsModal, setShowTaskDetailsModal] = useState(false);
+
+    const [latestTaskSeconds, setLatestTaskSeconds] = useState(10);
+    const [latestTaskProgress, setLatestTaskProgress] = useState(1);
+
+    const [isAcceptingTask, setIsAcceptingTask] = useState(false);
+
+    const latestTaskTimerRef = useRef(null);
+    const latestTaskProgressRef = useRef(null);
+
+    const SHOWN_LATEST_TASKS_KEY = '@homehelp_shown_latest_tasks';
+
+    const [acceptingTaskId, setAcceptingTaskId] = useState(null);
 
 
     const getGenderImage = (gender) => {
@@ -74,9 +104,834 @@ const DashboardScreen = ({ navigation }) => {
 
     useFocusEffect(
         useCallback(() => {
-            fetchProfile();
+            const loadDashboard = async () => {
+                console.log('===== DASHBOARD LOAD START =====');
+
+                // 1. First fetch profile
+                const location = await fetchProfile();
+                setLocation(location);
+
+                console.log('Profile Location Received:', location);
+
+                // 2. After fetchProfile completes, fetch upcoming tasks
+                await fetchUpcomingTasks(location);
+
+                console.log('===== DASHBOARD LOAD END =====');
+            };
+
+            loadDashboard();
         }, [])
     );
+
+
+    useEffect(() => {
+        return () => {
+            if (latestTaskTimerRef.current) {
+                clearInterval(
+                    latestTaskTimerRef.current
+                );
+            }
+
+            if (latestTaskProgressRef.current) {
+                clearInterval(
+                    latestTaskProgressRef.current
+                );
+            }
+        };
+    }, []);
+
+    const handleAcceptTask = async (task = selectedUpcomingTask) => {
+        if (!task) {
+            return;
+        }
+
+        const assignmentId =
+            task.assignmentId ||
+            task.id;
+
+        if (!assignmentId) {
+            Alert.alert(
+                'Error',
+                'Assignment ID is missing.'
+            );
+            return;
+        }
+
+        try {
+            // Show loader only for this task
+            setAcceptingTaskId(String(assignmentId));
+            setIsAcceptingTask(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert(
+                    'Error',
+                    'Authentication token not found.'
+                );
+                return;
+            }
+
+            console.log(
+                'Accept Assignment ID:',
+                assignmentId
+            );
+
+            const response = await fetch(
+                API.ACCEPT_PARTNER_ASSIGNMENT(assignmentId),
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            console.log(
+                'Accept Assignment Response:',
+                data
+            );
+
+            if (!response.ok) {
+                Alert.alert(
+                    'Unable to Accept',
+                    data?.message ||
+                    'Unable to accept this service.'
+                );
+                return;
+            }
+
+            // Stop timer if this was the latest task
+            if (latestTaskTimerRef.current) {
+                clearInterval(latestTaskTimerRef.current);
+                latestTaskTimerRef.current = null;
+            }
+
+            if (latestTaskProgressRef.current) {
+                clearInterval(latestTaskProgressRef.current);
+                latestTaskProgressRef.current = null;
+            }
+
+            // Remove only the accepted task
+            setUpcomingTasks(prevTasks =>
+                prevTasks.filter(
+                    item =>
+                        String(
+                            item.assignmentId || item.id
+                        ) !== String(assignmentId)
+                )
+            );
+
+            setShowTaskDetailsModal(false);
+            setSelectedUpcomingTask(null);
+            setLatestTaskSeconds(0);
+            setLatestTaskProgress(0);
+
+            Alert.alert(
+                'Success',
+                data?.message ||
+                'Service accepted successfully.'
+            );
+
+        } catch (error) {
+            console.log(
+                'Accept Assignment Error:',
+                error
+            );
+
+            Alert.alert(
+                'Error',
+                'Something went wrong while accepting the service.'
+            );
+
+        } finally {
+            // Hide loader only for this task
+            setAcceptingTaskId(null);
+            setIsAcceptingTask(false);
+        }
+    };
+
+
+    const openTaskDetails = async (task) => {
+        // Mark this task as already shown.
+        // Therefore it will not automatically appear again.
+        await markTaskAsShown(task);
+
+        // Stop any previous timer
+        if (latestTaskTimerRef.current) {
+            clearInterval(latestTaskTimerRef.current);
+            latestTaskTimerRef.current = null;
+        }
+
+        if (latestTaskProgressRef.current) {
+            clearInterval(latestTaskProgressRef.current);
+            latestTaskProgressRef.current = null;
+        }
+
+        setSelectedUpcomingTask(task);
+        setLatestTaskSeconds(10);
+        setLatestTaskProgress(1);
+        setShowTaskDetailsModal(true);
+    };
+
+
+    const showLatestTaskModal = async (task) => {
+        if (!task) {
+            return;
+        }
+
+        const taskId = getTaskUniqueId(task);
+
+        if (!taskId) {
+            return;
+        }
+
+        try {
+            const shownTasks = await getShownLatestTasks();
+
+            // Already shown before
+            if (shownTasks.includes(taskId)) {
+                console.log(
+                    'Latest task already shown:',
+                    taskId
+                );
+                return;
+            }
+
+            // -----------------------------------------
+            // Mark task as shown FIRST
+            // -----------------------------------------
+            await markTaskAsShown(task);
+
+            // -----------------------------------------
+            // Remove this task from Upcoming Tasks
+            // -----------------------------------------
+            // setUpcomingTasks(prevTasks =>
+            //     prevTasks.filter(
+            //         item =>
+            //             getTaskUniqueId(item) !== taskId
+            //     )
+            // );
+
+            // -----------------------------------------
+            // Stop previous timers
+            // -----------------------------------------
+            if (latestTaskTimerRef.current) {
+                clearInterval(
+                    latestTaskTimerRef.current
+                );
+
+                latestTaskTimerRef.current = null;
+            }
+
+            if (latestTaskProgressRef.current) {
+                clearInterval(
+                    latestTaskProgressRef.current
+                );
+
+                latestTaskProgressRef.current = null;
+            }
+
+            // -----------------------------------------
+            // Open modal
+            // -----------------------------------------
+            setSelectedUpcomingTask(task);
+            setLatestTaskSeconds(10);
+            setLatestTaskProgress(1);
+            setShowTaskDetailsModal(true);
+
+            const startTime = Date.now();
+            const duration = 10000;
+
+            // -----------------------------------------
+            // Countdown
+            // -----------------------------------------
+            latestTaskTimerRef.current = setInterval(() => {
+
+                const elapsed =
+                    Date.now() - startTime;
+
+                const remaining = Math.max(
+                    0,
+                    duration - elapsed
+                );
+
+                const seconds = Math.ceil(
+                    remaining / 1000
+                );
+
+                setLatestTaskSeconds(seconds);
+
+                if (remaining <= 0) {
+
+                    clearInterval(
+                        latestTaskTimerRef.current
+                    );
+
+                    latestTaskTimerRef.current = null;
+
+                    setShowTaskDetailsModal(false);
+                    setSelectedUpcomingTask(null);
+                    setLatestTaskSeconds(0);
+                    setLatestTaskProgress(0);
+                }
+
+            }, 100);
+
+            // -----------------------------------------
+            // Progress
+            // -----------------------------------------
+            latestTaskProgressRef.current =
+                setInterval(() => {
+
+                    const elapsed =
+                        Date.now() - startTime;
+
+                    const progress = Math.max(
+                        0,
+                        1 - elapsed / duration
+                    );
+
+                    setLatestTaskProgress(progress);
+
+                    if (progress <= 0) {
+
+                        clearInterval(
+                            latestTaskProgressRef.current
+                        );
+
+                        latestTaskProgressRef.current = null;
+                    }
+
+                }, 50);
+
+        } catch (error) {
+
+            console.log(
+                'Show latest task modal error:',
+                error
+            );
+        }
+    };
+
+    const closeTaskDetails = () => {
+        // Stop automatic countdown
+        if (latestTaskTimerRef.current) {
+            clearInterval(latestTaskTimerRef.current);
+            latestTaskTimerRef.current = null;
+        }
+
+        // Stop progress animation
+        if (latestTaskProgressRef.current) {
+            clearInterval(latestTaskProgressRef.current);
+            latestTaskProgressRef.current = null;
+        }
+
+        setShowTaskDetailsModal(false);
+
+        setLatestTaskSeconds(0);
+        setLatestTaskProgress(0);
+
+        setTimeout(() => {
+            setSelectedUpcomingTask(null);
+        }, 200);
+    };
+
+
+    const formatTaskDate = (dateString) => {
+        if (!dateString) return '—';
+
+        const date = new Date(`${dateString}T00:00:00`);
+
+        if (isNaN(date.getTime())) {
+            return dateString;
+        }
+
+        return date.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        });
+    };
+
+    const formatTime = (timeString) => {
+        if (!timeString) return '—';
+
+        const [hours, minutes] = timeString.split(':');
+
+        let hour = parseInt(hours, 10);
+        const minute = minutes || '00';
+
+        const period = hour >= 12 ? 'PM' : 'AM';
+
+        hour = hour % 12 || 12;
+
+        return `${hour}:${minute} ${period}`;
+    };
+
+    const calculateDuration = (startTime, endTime) => {
+        if (!startTime || !endTime) {
+            return '—';
+        }
+
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        const [endHour, endMinute] = endTime.split(':').map(Number);
+
+        const startTotalMinutes =
+            startHour * 60 + startMinute;
+
+        const endTotalMinutes =
+            endHour * 60 + endMinute;
+
+        let difference = endTotalMinutes - startTotalMinutes;
+
+        if (difference < 0) {
+            difference += 24 * 60;
+        }
+
+        const hours = Math.floor(difference / 60);
+        const minutes = difference % 60;
+
+        if (minutes === 0) {
+            return `${hours} hr${hours !== 1 ? 's' : ''}`;
+        }
+
+        if (hours === 0) {
+            return `${minutes} min`;
+        }
+
+        return `${hours} hr${hours !== 1 ? 's' : ''} ${minutes} min`;
+    };
+
+    const getTaskLocation = (item) => {
+        if (item.addressLine2) {
+            return item.addressLine2;
+        }
+
+        if (item.city) {
+            return item.city;
+        }
+
+        if (item.addressLine1) {
+            return item.addressLine1;
+        }
+
+        return 'Location not available';
+    };
+
+    const getServiceIcon = () => {
+        return '💼';
+
+    };
+
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+        if (
+            lat1 == null ||
+            lon1 == null ||
+            lat2 == null ||
+            lon2 == null
+        ) {
+            return null;
+        }
+
+        const R = 6371; // Earth radius in KM
+
+        const dLat = ((Number(lat2) - Number(lat1)) * Math.PI) / 180;
+        const dLon = ((Number(lon2) - Number(lon1)) * Math.PI) / 180;
+
+        const a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos((Number(lat1) * Math.PI) / 180) *
+            Math.cos((Number(lat2) * Math.PI) / 180) *
+            Math.sin(dLon / 2) *
+            Math.sin(dLon / 2);
+
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c;
+    };
+
+    const getShownLatestTasks = async () => {
+        try {
+            const stored = await AsyncStorage.getItem(
+                SHOWN_LATEST_TASKS_KEY
+            );
+
+            if (!stored) {
+                return [];
+            }
+
+            const parsed = JSON.parse(stored);
+
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.log('Get shown latest tasks error:', error);
+            return [];
+        }
+    };
+
+
+    const getTaskUniqueId = (task) => {
+        return String(
+
+            task?.bookingNo ||
+
+            ''
+        );
+    };
+
+
+
+    const markTaskAsShown = async (task) => {
+        try {
+            const taskId = getTaskUniqueId(task);
+
+            if (!taskId) {
+                return;
+            }
+
+            const existing = await getShownLatestTasks();
+
+            if (!existing.includes(taskId)) {
+                const updated = [
+                    ...existing,
+                    taskId,
+                ];
+
+                await AsyncStorage.setItem(
+                    SHOWN_LATEST_TASKS_KEY,
+                    JSON.stringify(updated)
+                );
+            }
+
+            console.log('Task marked as shown:', taskId);
+
+        } catch (error) {
+            console.log(
+                'Mark task as shown error:',
+                error
+            );
+        }
+    };
+
+
+
+
+
+
+    const fetchUpcomingTasks = async (partnerLocation) => {
+        try {
+            setIsProfileLoading(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                console.log('No token found');
+                return;
+            }
+
+            const response = await fetch(API.PARTNER_BOOKING_ASSIGNMENTS, {
+                method: 'GET',
+                headers: {
+                    Accept: '*/*',
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            const data = await response.json();
+
+            console.log('Booking Assignments API Response:', data);
+
+            if (!response.ok) {
+                Alert.alert(
+                    'Error',
+                    data?.message || 'Unable to fetch booking assignments.'
+                );
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                console.log('Unexpected assignments response:', data);
+                setUpcomingTasks([]);
+                return;
+            }
+
+            const mappedTasks = data
+                .filter(item => item?.status?.toLowerCase() === 'pending')
+                .map((item, index) => {
+
+                    const startTime = formatTime(item.startTime);
+                    const endTime = formatTime(item.endTime);
+
+                    const distance = calculateDistance(
+                        partnerLocation?.latitude,
+                        partnerLocation?.longitude,
+                        item.latitude,
+                        item.longitude
+                    );
+
+                    return {
+                        id: item.assignmentId || index.toString(),
+
+                        assignmentId: item.assignmentId,
+                        bookingNo: item.bookingNo,
+
+                        title: item.serviceName || 'Service',
+
+                        date: formatTaskDate(item.serviceDate),
+
+                        time: startTime,
+
+                        duration: calculateDuration(
+                            item.startTime,
+                            item.endTime
+                        ),
+
+                        client: item.customerName || 'Customer',
+
+                        location: getTaskLocation(item),
+
+                        distance:
+                            distance !== null
+                                ? `${distance.toFixed(1)} km`
+                                : '—',
+
+                        icon: getServiceIcon(),
+
+                        status: item.status?.toLowerCase() || 'pending',
+
+                        rate: item.rate || 0,
+
+                        serviceNotes: item.serviceNotes || '',
+
+                        addressLine1: item.addressLine1 || '',
+                        addressLine2: item.addressLine2 || '',
+                        city: item.city || '',
+                        state: item.state || '',
+                        postalCode: item.postalCode || '',
+
+                        latitude: item.latitude,
+                        longitude: item.longitude,
+
+                        customerPhone: item.customerPhone || '',
+
+                        startTime: item.startTime,
+                        endTime: item.endTime,
+
+                        isLatest: item.isLatest,
+                    };
+                });
+
+            setUpcomingTasks(mappedTasks);
+            const shownTasks = await getShownLatestTasks();
+
+            console.log(
+                'Previously shown tasks:',
+                shownTasks
+            );
+
+            // Find latest task which has NOT been shown
+            const latestUnseenTask = mappedTasks.find(task => {
+
+                const taskId = getTaskUniqueId(task);
+
+                return (
+                    (
+                        task.isLatest === true ||
+                        task.isLatest === 'true'
+                    ) &&
+                    !shownTasks.includes(taskId)
+                );
+            });
+
+            // Remove already shown services from Upcoming Tasks
+            const visibleUpcomingTasks = mappedTasks.filter(task => {
+
+                const taskId = getTaskUniqueId(task);
+
+                return !shownTasks.includes(taskId);
+            });
+
+            // Show only unseen services
+            // setUpcomingTasks(visibleUpcomingTasks);
+
+            // Show latest unseen service in popup
+            if (latestUnseenTask) {
+                await showLatestTaskModal(latestUnseenTask);
+            }
+
+        } catch (error) {
+            console.log('Fetch Upcoming Tasks Error:', error);
+
+            Alert.alert(
+                'Error',
+                'Something went wrong while loading new task requests.'
+            );
+
+            setUpcomingTasks([]);
+        } finally {
+            setIsProfileLoading(false);
+        }
+    };
+
+
+    const fetchNewTasks = async (partnerLocation) => {
+        try {
+            setNewTaskLoading(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                console.log('No token found');
+                return;
+            }
+
+            const response = await fetch(API.PARTNER_BOOKING_ASSIGNMENTS, {
+                method: 'GET',
+                headers: {
+                    Accept: '*/*',
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            const data = await response.json();
+
+            console.log('Booking Assignments API Response:', data);
+
+            if (!response.ok) {
+                Alert.alert(
+                    'Error',
+                    data?.message || 'Unable to fetch booking assignments.'
+                );
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                console.log('Unexpected assignments response:', data);
+                setUpcomingTasks([]);
+                return;
+            }
+
+            const mappedTasks = data
+                .filter(item => item?.status?.toLowerCase() === 'pending')
+                .map((item, index) => {
+
+                    const startTime = formatTime(item.startTime);
+                    const endTime = formatTime(item.endTime);
+
+                    const distance = calculateDistance(
+                        partnerLocation?.latitude,
+                        partnerLocation?.longitude,
+                        item.latitude,
+                        item.longitude
+                    );
+
+                    return {
+                        id: item.assignmentId || index.toString(),
+
+                        assignmentId: item.assignmentId,
+                        bookingNo: item.bookingNo,
+
+                        title: item.serviceName || 'Service',
+
+                        date: formatTaskDate(item.serviceDate),
+
+                        time: startTime,
+
+                        duration: calculateDuration(
+                            item.startTime,
+                            item.endTime
+                        ),
+
+                        client: item.customerName || 'Customer',
+
+                        location: getTaskLocation(item),
+
+                        distance:
+                            distance !== null
+                                ? `${distance.toFixed(1)} km`
+                                : '—',
+
+                        icon: getServiceIcon(),
+
+                        status: item.status?.toLowerCase() || 'pending',
+
+                        rate: item.rate || 0,
+
+                        serviceNotes: item.serviceNotes || '',
+
+                        addressLine1: item.addressLine1 || '',
+                        addressLine2: item.addressLine2 || '',
+                        city: item.city || '',
+                        state: item.state || '',
+                        postalCode: item.postalCode || '',
+
+                        latitude: item.latitude,
+                        longitude: item.longitude,
+
+                        customerPhone: item.customerPhone || '',
+
+                        startTime: item.startTime,
+                        endTime: item.endTime,
+
+                        isLatest: item.isLatest,
+                    };
+                });
+
+            setUpcomingTasks(mappedTasks);
+            const shownTasks = await getShownLatestTasks();
+
+            console.log(
+                'Previously shown tasks:',
+                shownTasks
+            );
+
+            // Find latest task which has NOT been shown
+            const latestUnseenTask = mappedTasks.find(task => {
+
+                const taskId = getTaskUniqueId(task);
+
+                return (
+                    (
+                        task.isLatest === true ||
+                        task.isLatest === 'true'
+                    ) &&
+                    !shownTasks.includes(taskId)
+                );
+            });
+
+            // Remove already shown services from Upcoming Tasks
+            const visibleUpcomingTasks = mappedTasks.filter(task => {
+
+                const taskId = getTaskUniqueId(task);
+
+                return !shownTasks.includes(taskId);
+            });
+
+            // Show only unseen services
+            // setUpcomingTasks(visibleUpcomingTasks);
+
+            // Show latest unseen service in popup
+            if (latestUnseenTask) {
+                await showLatestTaskModal(latestUnseenTask);
+            }
+
+        } catch (error) {
+            console.log('Fetch Upcoming Tasks Error:', error);
+
+            Alert.alert(
+                'Error',
+                'Something went wrong while loading new task requests.'
+            );
+
+            setUpcomingTasks([]);
+        } finally {
+            setNewTaskLoading(false);
+        }
+    };
 
 
 
@@ -130,6 +985,20 @@ const DashboardScreen = ({ navigation }) => {
             setFirstName(data.firstName || '');
             setLastName(data.lastName || '');
             setGender(data.gender || '');
+            const latitude = Number(data.latitude);
+            const longitude = Number(data.longitude);
+
+            const location = {
+                latitude,
+                longitude,
+            };
+
+            console.log(
+                'Partner Service Location:',
+                location
+            );
+
+            setPartnerLocation(location);
 
 
 
@@ -156,6 +1025,8 @@ const DashboardScreen = ({ navigation }) => {
             } else {
                 setProfileImage(null);
             }
+
+            return location;
 
             // -----------------------------
             // Documents
@@ -309,44 +1180,7 @@ const DashboardScreen = ({ navigation }) => {
     };
 
     // Upcoming tasks with date, time, and duration
-    const upcomingTasks = [
-        {
-            id: 1,
-            title: 'Plumbing Repair',
-            date: '04 Jun 2026',
-            time: '10:30 AM',
-            duration: '2 hrs',
-            client: 'Mr. Sharma',
-            location: 'Andheri East',
-            distance: '2.5 km',
-            icon: '🔧',
-            status: 'pending',
-        },
-        {
-            id: 2,
-            title: 'Electrical Work',
-            date: '05 Jun 2026',
-            time: '2:00 PM',
-            duration: '1.5 hrs',
-            client: 'Mrs. Patel',
-            location: 'Bandra West',
-            distance: '4.8 km',
-            icon: '⚡',
-            status: 'pending',
-        },
-        {
-            id: 3,
-            title: 'Cleaning Service',
-            date: '06 Jun 2026',
-            time: '5:30 PM',
-            duration: '3 hrs',
-            client: 'Mr. Singh',
-            location: 'Juhu',
-            distance: '3.2 km',
-            icon: '🧹',
-            status: 'pending',
-        },
-    ];
+
 
     // Quick actions
     const quickActions = [
@@ -939,19 +1773,444 @@ const DashboardScreen = ({ navigation }) => {
                                 <Text style={styles.upcomingMetaText}>{item.distance}</Text>
                             </View>
                         </View>
+
                     </View>
                 </View>
                 <View style={styles.upcomingActions}>
-                    <TouchableOpacity style={styles.upcomingAcceptButton} >
-                        <Text style={styles.upcomingAcceptText}>Accept</Text>
+                    <TouchableOpacity
+                        style={styles.upcomingAcceptButton}
+                        activeOpacity={0.8}
+                        onPress={() => handleAcceptTask(item)}
+                        disabled={
+                            acceptingTaskId ===
+                            String(item.assignmentId || item.id)
+                        }
+                    >
+                        {acceptingTaskId ===
+                            String(item.assignmentId || item.id) ? (
+                            <ActivityIndicator
+                                size="small"
+                                color="#FFFFFF"
+                            />
+                        ) : (
+                            <Text style={styles.upcomingAcceptText}>
+                                Accept
+                            </Text>
+                        )}
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.upcomingDeclineButton} >
+                    {/* <TouchableOpacity style={styles.upcomingDeclineButton} >
                         <Text style={styles.upcomingDeclineText}>Decline</Text>
+                    </TouchableOpacity> */}
+
+
+                    <TouchableOpacity
+                        style={styles.viewDetailsButton}
+                        activeOpacity={0.8}
+                        onPress={() => openTaskDetails(item)}
+                    >
+                        <Text style={styles.viewDetailsButtonText}>
+                            View Details
+                        </Text>
+
+
                     </TouchableOpacity>
+
+
 
                 </View>
 
             </View>
+        );
+    };
+
+
+    const renderTaskDetailsModal = () => {
+        if (!selectedUpcomingTask) {
+            return null;
+        }
+
+        const task = selectedUpcomingTask;
+
+        const latitude = Number(task.latitude);
+        const longitude = Number(task.longitude);
+
+        const hasCoordinates =
+            Number.isFinite(latitude) &&
+            Number.isFinite(longitude);
+
+        const fullAddress = [
+            task.addressLine1,
+            task.addressLine2,
+            task.city,
+            task.state,
+            task.postalCode,
+        ]
+            .filter(Boolean)
+            .join(', ');
+
+        return (
+            <Modal
+                visible={showTaskDetailsModal}
+                transparent
+                animationType="slide"
+                onRequestClose={closeTaskDetails}
+            >
+                <View style={styles.taskDetailsOverlay}>
+
+                    <View style={styles.taskDetailsModal}>
+
+                        {/* Auto Close Countdown */}
+                        {task.isLatest && (
+                            <View style={styles.latestTaskAlertContainer}>
+
+                                <View style={styles.latestTaskAlertHeader}>
+                                    <View style={styles.latestTaskAlertTitleRow}>
+                                        <View style={styles.latestTaskLiveDot} />
+
+                                        <Text style={styles.latestTaskAlertTitle}>
+                                            New Job Request
+                                        </Text>
+                                    </View>
+
+                                    <Text style={styles.latestTaskCountdown}>
+                                        {latestTaskSeconds}s
+                                    </Text>
+                                </View>
+
+                                <View style={styles.latestTaskProgressTrack}>
+                                    <View
+                                        style={[
+                                            styles.latestTaskProgressBar,
+                                            {
+                                                width: `${latestTaskProgress * 100}%`,
+                                            },
+                                        ]}
+                                    />
+                                </View>
+
+                                <Text style={styles.latestTaskAlertSubtitle}>
+                                    This request will close automatically
+                                </Text>
+                            </View>
+                        )}
+
+                        {/* Header */}
+                        <View style={styles.taskDetailsHeader}>
+
+                            <View style={styles.taskDetailsHeaderLeft}>
+                                <View style={styles.taskDetailsIconContainer}>
+                                    <Text style={styles.taskDetailsIcon}>
+                                        {task.icon || '🏠'}
+                                    </Text>
+                                </View>
+
+                                <View style={styles.taskDetailsHeaderInfo}>
+                                    <Text
+                                        style={styles.taskDetailsTitle}
+                                        numberOfLines={1}
+                                    >
+                                        {task.serviceName || task.title}
+                                    </Text>
+
+                                    <Text style={styles.taskDetailsBookingNo}>
+                                        Booking #{task.bookingNo || '—'}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <TouchableOpacity
+                                style={styles.taskDetailsCloseButton}
+                                onPress={closeTaskDetails}
+                            >
+                                <Image
+                                    source={require('../../asset/close.png')}
+                                    style={styles.taskDetailsCloseIcon}
+                                />
+                            </TouchableOpacity>
+
+                        </View>
+
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={
+                                styles.taskDetailsScrollContent
+                            }
+                        >
+
+                            {/* Customer */}
+                            <View style={styles.taskDetailsSection}>
+
+                                <Text style={styles.taskDetailsSectionTitle}>
+                                    Customer Details
+                                </Text>
+
+                                <View style={styles.taskDetailRow}>
+
+                                    <View style={styles.taskDetailIconBox}>
+                                        <Image
+                                            source={require('../../asset/person-outline.png')}
+                                            style={styles.taskDetailIcon}
+                                        />
+                                    </View>
+
+                                    <View style={styles.taskDetailTextContainer}>
+                                        <Text style={styles.taskDetailLabel}>
+                                            Customer Name
+                                        </Text>
+
+                                        <Text style={styles.taskDetailValue}>
+                                            {task.client || '—'}
+                                        </Text>
+                                    </View>
+
+                                </View>
+
+                            </View>
+
+                            {/* Service Details */}
+                            <View style={styles.taskDetailsSection}>
+
+                                <Text style={styles.taskDetailsSectionTitle}>
+                                    Service Details
+                                </Text>
+
+                                <View style={styles.taskDetailsGrid}>
+
+                                    <View style={styles.taskDetailGridItem}>
+                                        <Text style={styles.taskDetailLabel}>
+                                            Service
+                                        </Text>
+
+                                        <Text style={styles.taskDetailValue}>
+                                            {task.title || '—'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.taskDetailGridItem}>
+                                        <Text style={styles.taskDetailLabel}>
+                                            Rate
+                                        </Text>
+
+                                        <Text
+                                            style={[
+                                                styles.taskDetailValue,
+                                                styles.taskRateValue,
+                                            ]}
+                                        >
+                                            ₹{Number(task.rate || 0).toLocaleString()}
+                                        </Text>
+                                    </View>
+
+                                </View>
+
+                            </View>
+
+                            {/* Schedule */}
+                            <View style={styles.taskDetailsSection}>
+
+                                <Text style={styles.taskDetailsSectionTitle}>
+                                    Schedule
+                                </Text>
+
+                                <View style={styles.taskDetailsTimeCard}>
+
+                                    <View style={styles.taskTimeItem}>
+
+                                        <View style={styles.taskTimeIconBox}>
+                                            <Image
+                                                source={require('../../asset/time-outline.png')}
+                                                style={styles.taskTimeIcon}
+                                            />
+                                        </View>
+
+                                        <View>
+                                            <Text style={styles.taskDetailLabel}>
+                                                Start Time
+                                            </Text>
+
+                                            <Text style={styles.taskTimeValue}>
+                                                {formatTime(task.startTime)}
+                                            </Text>
+                                        </View>
+
+                                    </View>
+
+                                    <View style={styles.taskTimeDivider} />
+
+                                    <View style={styles.taskTimeItem}>
+
+                                        <View style={styles.taskTimeIconBox}>
+                                            <Image
+                                                source={require('../../asset/time-outline.png')}
+                                                style={styles.taskTimeIcon}
+                                            />
+                                        </View>
+
+                                        <View>
+                                            <Text style={styles.taskDetailLabel}>
+                                                End Time
+                                            </Text>
+
+                                            <Text style={styles.taskTimeValue}>
+                                                {formatTime(task.endTime)}
+                                            </Text>
+                                        </View>
+
+                                    </View>
+
+                                </View>
+
+                            </View>
+
+                            {/* Address */}
+                            <View style={styles.taskDetailsSection}>
+
+                                <Text style={styles.taskDetailsSectionTitle}>
+                                    Service Address
+                                </Text>
+
+                                <View style={styles.addressCard}>
+
+                                    <View style={styles.addressIconBox}>
+                                        <Image
+                                            source={require('../../asset/location-outline.png')}
+                                            style={styles.addressIcon}
+                                        />
+                                    </View>
+
+                                    <Text style={styles.addressText}>
+                                        {fullAddress || 'Address not available'}
+                                    </Text>
+
+                                </View>
+
+                            </View>
+
+                            {/* Map */}
+                            <View style={styles.taskDetailsSection}>
+
+                                <View style={styles.mapHeader}>
+                                    <Text style={styles.taskDetailsSectionTitle}>
+                                        Service Location
+                                    </Text>
+
+                                    {hasCoordinates && (
+                                        <Text style={styles.coordinateText}>
+                                            {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                                        </Text>
+                                    )}
+                                </View>
+
+                                {hasCoordinates ? (
+                                    <View style={styles.taskMapContainer}>
+
+                                        <MapView
+                                            style={styles.taskMap}
+                                            initialRegion={{
+                                                latitude,
+                                                longitude,
+                                                latitudeDelta: 0.008,
+                                                longitudeDelta: 0.008,
+                                            }}
+                                            scrollEnabled={true}
+                                            zoomEnabled={true}
+                                            rotateEnabled={false}
+                                            pitchEnabled={false}
+                                        >
+                                            <Marker
+                                                coordinate={{
+                                                    latitude,
+                                                    longitude,
+                                                }}
+                                                title={
+                                                    task.customerName ||
+                                                    'Customer Location'
+                                                }
+                                                description={
+                                                    task.addressLine1 ||
+                                                    task.serviceName ||
+                                                    'Service Location'
+                                                }
+                                            />
+                                        </MapView>
+
+                                    </View>
+                                ) : (
+                                    <View style={styles.noMapContainer}>
+                                        <Image
+                                            source={require('../../asset/location-outline.png')}
+                                            style={styles.noMapIcon}
+                                        />
+
+                                        <Text style={styles.noMapText}>
+                                            Location coordinates are not available
+                                        </Text>
+                                    </View>
+                                )}
+
+                            </View>
+
+                            <View style={styles.taskModalActions}>
+
+
+
+                                <TouchableOpacity
+                                    style={styles.taskModalAcceptButton}
+                                    activeOpacity={0.85}
+                                    onPress={() => handleAcceptTask(selectedUpcomingTask)}
+                                    disabled={
+                                        acceptingTaskId ===
+                                        String(
+                                            selectedUpcomingTask?.assignmentId ||
+                                            selectedUpcomingTask?.id ||
+                                            ''
+                                        )
+                                    }
+                                >
+                                    {acceptingTaskId ===
+                                        String(
+                                            selectedUpcomingTask?.assignmentId ||
+                                            selectedUpcomingTask?.id ||
+                                            ''
+                                        ) ? (
+                                        <View
+                                            style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <ActivityIndicator
+                                                size="small"
+                                                color="#FFFFFF"
+                                            />
+
+                                            <Text
+                                                style={[
+                                                    styles.taskModalAcceptButtonText,
+                                                    { marginLeft: 8 },
+                                                ]}
+                                            >
+                                                Accepting...
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.taskModalAcceptButtonText}>
+                                            Accept Job
+                                        </Text>
+                                    )}
+                                </TouchableOpacity>
+
+                            </View>
+
+                            {/* Bottom close button */}
+
+
+                        </ScrollView>
+
+                    </View>
+
+                </View>
+            </Modal>
         );
     };
 
@@ -1364,6 +2623,9 @@ const DashboardScreen = ({ navigation }) => {
                     {/* Availability Modal */}
                     {renderAvailabilityModal()}
 
+
+                    {renderTaskDetailsModal()}
+
                     {/* Main Content */}
                     <ScrollView
                         style={[styles.mainContent, isOfflineStatus && styles.mainContentOffline]}
@@ -1506,8 +2768,11 @@ const DashboardScreen = ({ navigation }) => {
 
 
 
+
+
+
                         <ImageBackground
-                            source={require('../../asset/cleaning.jpg')}
+                            source={require('../../asset/bgclean.png')}
                             style={styles.summaryCardContainer}
                             imageStyle={styles.summaryCardImage}
                         >
@@ -1636,6 +2901,86 @@ const DashboardScreen = ({ navigation }) => {
                             )}
                         </View>
 
+                        <View style={{ alignItems: 'flex-end', flexDirection: 'raw', justifyContent: 'flex-end', marginBottom: 10 }}>
+                            <TouchableOpacity style={[styles.taskModalAcceptButton, { paddingHorizontal: 10 }]} onPress={() => fetchNewTasks(location)} disabled={isNewTaskLoading}>
+
+                                {isNewTaskLoading ? (
+                                    <View
+                                        style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
+                                    >
+                                        <ActivityIndicator
+                                            size="small"
+                                            color="#FFFFFF"
+                                        />
+
+                                        <Text
+                                            style={[
+                                                styles.taskModalAcceptButtonText,
+                                                {
+                                                    fontSize: 12,
+                                                    marginLeft: 8,
+                                                },
+                                            ]}
+                                        >
+                                            Searching...
+                                        </Text>
+                                    </View>
+                                ) : (
+                                    <Text
+                                        style={[
+                                            styles.taskModalAcceptButtonText,
+                                            { fontSize: 12 },
+                                        ]}
+                                    >
+                                        Search New Job
+                                    </Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+
+
+                        <View style={[styles.upcomingFloatContainer, isOfflineStatus && styles.upcomingFloatContainerOffline]}>
+
+
+
+
+
+                            <View style={styles.upcomingSectionHeader}>
+                                <Text style={styles.sectionTitle}>New Job Requests</Text>
+
+
+
+                                {upcomingTasks.length > 3 && (
+                                    <TouchableOpacity
+                                        activeOpacity={0.7}
+                                        onPress={() => setShowAllTasks(prev => !prev)}
+                                    >
+                                        <Text style={styles.viewMoreText}>
+                                            {showAllTasks ? 'Show Less' : 'View More'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                            </View>
+
+                            <FlatList
+                                data={
+                                    showAllTasks
+                                        ? upcomingTasks
+                                        : upcomingTasks.slice(0, 3)
+                                }
+                                keyExtractor={(item, index) =>
+                                    String(item.assignmentId || index)
+                                }
+                                renderItem={renderUpcomingItem}
+                                scrollEnabled={false}
+                                showsVerticalScrollIndicator={false}
+                            />
+                        </View>
+
                         {/* Self Rating and Job Stats */}
                         <View style={[styles.ratingContainer, isOfflineStatus && styles.ratingContainerOffline]}>
                             <View style={styles.ratingSection}>
@@ -1660,18 +3005,7 @@ const DashboardScreen = ({ navigation }) => {
                         </View>
 
                         {/* Upcoming Tasks with Date, Time, Duration */}
-                        <View style={[styles.upcomingFloatContainer, isOfflineStatus && styles.upcomingFloatContainerOffline]}>
-                            <View style={styles.upcomingFloatHeader}>
-                                <Text style={styles.sectionTitle}>New Task Requests</Text>
-                                <Text style={styles.upcomingFloatBadge}>{upcomingTasks.length} New</Text>
-                            </View>
-                            <FlatList
-                                data={upcomingTasks}
-                                keyExtractor={(item) => item.id.toString()}
-                                renderItem={renderUpcomingItem}
-                                scrollEnabled={false}
-                            />
-                        </View>
+
 
                         {/* Quick Actions */}
                         <View style={styles.quickActionsContainer}>
@@ -2091,7 +3425,7 @@ const styles = StyleSheet.create({
         color: '#888',
     },
     scheduleContainer: {
-        marginBottom: 16,
+        marginBottom: 5,
     },
     scheduleHeader: {
         flexDirection: 'row',
@@ -2337,14 +3671,28 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        borderRadius: 12,
-        padding: 12,
-        marginBottom: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.03,
-        shadowRadius: 3,
-        elevation: 1,
+
+
+        padding: 13,
+        marginBottom: 10,
+
+        backgroundColor: '#FFFFFF',
+
+        // Subtle border
+        borderWidth: 1,
+        borderColor: '#F0EBF3',
+
+        // iOS
+        shadowColor: '#5E4A68',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 5,
+
+        // Android
+        elevation: 3,
     },
     upcomingLeft: {
         flexDirection: 'row',
@@ -2434,6 +3782,7 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 12,
         fontWeight: '600',
+        textAlign: 'center'
     },
     quickActionsContainer: {
         marginBottom: 16,
@@ -2972,11 +4321,13 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         borderWidth: 1,
         borderColor: '#FFCDD2',
+        justifyContent: 'center'
     },
     upcomingDeclineText: {
         color: '#FF4444',
         fontSize: 12,
         fontWeight: '600',
+        textAlign: 'center'
     },
     summaryCardContainer: {
         borderRadius: 16,
@@ -3172,6 +4523,446 @@ const styles = StyleSheet.create({
         marginLeft: 8,
         flex: 1,
         fontWeight: '500',
+    },
+    upcomingSectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 10,
+    },
+
+    sectionTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#2F2633',
+    },
+
+    viewMoreText: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#76577F',
+    },
+
+    taskDetailsOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.55)',
+        justifyContent: 'flex-end',
+    },
+
+    taskDetailsModal: {
+        backgroundColor: '#FFFFFF',
+        borderTopLeftRadius: 28,
+        borderTopRightRadius: 28,
+        maxHeight: height * 0.92,
+        overflow: 'hidden',
+    },
+
+    taskDetailsHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 18,
+        borderBottomWidth: 1,
+        borderBottomColor: '#EEEEEE',
+    },
+
+    taskDetailsHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flex: 1,
+    },
+
+    taskDetailsIconContainer: {
+        width: 48,
+        height: 48,
+        borderRadius: 14,
+        backgroundColor: '#FFF3E8',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+
+    taskDetailsIcon: {
+        fontSize: 24,
+    },
+
+    taskDetailsHeaderInfo: {
+        flex: 1,
+    },
+
+    taskDetailsTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#1A1A1A',
+    },
+
+    taskDetailsBookingNo: {
+        fontSize: 12,
+        color: '#888888',
+        marginTop: 3,
+    },
+
+    taskDetailsCloseButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: '#F5F5F5',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 10,
+    },
+
+    taskDetailsCloseIcon: {
+        width: 18,
+        height: 18,
+        tintColor: '#555555',
+    },
+
+    taskDetailsScrollContent: {
+        paddingHorizontal: 20,
+        paddingBottom: 30,
+    },
+
+    taskDetailsSection: {
+        marginTop: 20,
+    },
+
+    taskDetailsSectionTitle: {
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#222222',
+        marginBottom: 12,
+    },
+
+    taskDetailRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 14,
+        padding: 14,
+    },
+
+    taskDetailIconBox: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        backgroundColor: '#FFF3E8',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+
+    taskDetailIcon: {
+        width: 19,
+        height: 19,
+        tintColor: '#FF8C00',
+    },
+
+    taskDetailTextContainer: {
+        flex: 1,
+    },
+
+    taskDetailLabel: {
+        fontSize: 11,
+        color: '#888888',
+        marginBottom: 3,
+    },
+
+    taskDetailValue: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#222222',
+    },
+
+    taskRateValue: {
+        color: '#2E9D59',
+        fontWeight: '700',
+    },
+
+    taskDetailsGrid: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+
+    taskDetailGridItem: {
+        flex: 1,
+        backgroundColor: '#F8F9FA',
+        borderRadius: 14,
+        padding: 14,
+        minHeight: 72,
+        justifyContent: 'center',
+    },
+
+    taskDetailsTimeCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 14,
+        padding: 14,
+    },
+
+    taskTimeItem: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    taskTimeIconBox: {
+        width: 38,
+        height: 38,
+        borderRadius: 11,
+        backgroundColor: '#FFF3E8',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+
+    taskTimeIcon: {
+        width: 17,
+        height: 17,
+        tintColor: '#FF8C00',
+    },
+
+    taskTimeValue: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#222222',
+    },
+
+    taskTimeDivider: {
+        width: 1,
+        height: 38,
+        backgroundColor: '#DDDDDD',
+        marginHorizontal: 10,
+    },
+
+    addressCard: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        backgroundColor: '#F8F9FA',
+        borderRadius: 14,
+        padding: 14,
+    },
+
+    addressIconBox: {
+        width: 38,
+        height: 38,
+        borderRadius: 11,
+        backgroundColor: '#FFF3E8',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 10,
+    },
+
+    addressIcon: {
+        width: 18,
+        height: 18,
+        tintColor: '#FF8C00',
+    },
+
+    addressText: {
+        flex: 1,
+        fontSize: 14,
+        lineHeight: 21,
+        color: '#444444',
+    },
+
+    mapHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+
+    coordinateText: {
+        fontSize: 10,
+        color: '#888888',
+    },
+
+    taskMapContainer: {
+        height: 220,
+        borderRadius: 16,
+        overflow: 'hidden',
+        backgroundColor: '#EEEEEE',
+    },
+
+    taskMap: {
+        width: '100%',
+        height: '100%',
+    },
+
+    noMapContainer: {
+        height: 180,
+        borderRadius: 16,
+        backgroundColor: '#F8F9FA',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 30,
+    },
+
+    noMapIcon: {
+        width: 32,
+        height: 32,
+        tintColor: '#AAAAAA',
+        marginBottom: 10,
+    },
+
+    noMapText: {
+        fontSize: 13,
+        color: '#888888',
+        textAlign: 'center',
+    },
+
+    taskDetailsDoneButton: {
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: '#FF8C00',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginTop: 22,
+    },
+
+    taskDetailsDoneText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '700',
+    },
+
+    viewDetailsButton: {
+        backgroundColor: '#ac6f25',
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        borderRadius: 8,
+        shadowColor: '#ac6f25',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+
+    viewDetailsButtonText: {
+        color: '#fdfdfd',
+        fontSize: 13,
+        fontWeight: '700',
+    },
+
+    viewDetailsArrow: {
+        width: 14,
+        height: 14,
+        tintColor: '#FF8C00',
+        marginLeft: 5,
+    },
+
+    latestTaskAlertContainer: {
+        backgroundColor: '#FFF7ED',
+        paddingHorizontal: 18,
+        paddingTop: 12,
+        paddingBottom: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: '#FFE0BF',
+    },
+
+    latestTaskAlertHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+
+    latestTaskAlertTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+
+    latestTaskLiveDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: '#FF8C00',
+        marginRight: 7,
+    },
+
+    latestTaskAlertTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#E65100',
+    },
+
+    latestTaskCountdown: {
+        fontSize: 16,
+        fontWeight: '800',
+        color: '#E65100',
+    },
+
+    latestTaskProgressTrack: {
+        width: '100%',
+        height: 5,
+        borderRadius: 3,
+        backgroundColor: '#FFE4CC',
+        overflow: 'hidden',
+    },
+
+    latestTaskProgressBar: {
+        height: '100%',
+        borderRadius: 3,
+        backgroundColor: '#FF8C00',
+    },
+
+    latestTaskAlertSubtitle: {
+        fontSize: 10,
+        color: '#A66A32',
+        marginTop: 6,
+    },
+    taskModalActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 18,
+        paddingVertical: 14,
+        borderTopWidth: 1,
+        borderTopColor: '#EEEEEE',
+        backgroundColor: '#FFFFFF',
+    },
+
+    taskModalCloseButton: {
+        flex: 1,
+        height: 48,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#D9D9D9',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
+    },
+
+    taskModalCloseButtonText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#666666',
+    },
+
+    taskModalAcceptButton: {
+        flex: 1.4,
+        height: 48,
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FF8C00',
+
+        shadowColor: '#FF8C00',
+        shadowOffset: {
+            width: 0,
+            height: 3,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 5,
+        elevation: 4,
+    },
+
+    taskModalAcceptButtonText: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#FFFFFF',
     },
 });
 

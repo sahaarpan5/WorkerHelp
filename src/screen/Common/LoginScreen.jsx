@@ -48,10 +48,10 @@ const LoginScreen = ({ navigation }) => {
 
     // Service images for carousel - only images, no text
     const serviceImages = [
-        { image: require('../../asset/deep.png') },
-        { image: require('../../asset/sofa.png') },
-        { image: require('../../asset/maid.png') },
-        { image: require('../../asset/bathroom.png') },
+        { image: require('../../asset/homeclean.png') },
+        { image: require('../../asset/kitchenclean.png') },
+        { image: require('../../asset/Packers.png') },
+        { image: require('../../asset/eldercare.png') },
     ];
 
     useEffect(() => {
