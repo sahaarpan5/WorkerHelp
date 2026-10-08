@@ -83,6 +83,8 @@ const DashboardScreen = ({ navigation }) => {
 
     const [acceptingTaskId, setAcceptingTaskId] = useState(null);
 
+    const [allSchedule, setAllSchedule] = useState([]);
+
 
     const getGenderImage = (gender) => {
         const value = String(gender || '').toLowerCase();
@@ -112,6 +114,8 @@ const DashboardScreen = ({ navigation }) => {
                 setLocation(location);
 
                 console.log('Profile Location Received:', location);
+
+                await fetchTodaySchedule();
 
                 // 2. After fetchProfile completes, fetch upcoming tasks
                 await fetchUpcomingTasks(location);
@@ -619,7 +623,84 @@ const DashboardScreen = ({ navigation }) => {
 
 
 
+    const fetchTodaySchedule = async () => {
+        setIsProfileLoading(true);
+        try {
+            const token = await AsyncStorage.getItem('token');
 
+            if (!token) {
+                console.log('No token found');
+                return;
+            }
+
+            const response = await fetch(
+                API.PARTNER_ACCEPTED_BOOKING_ASSIGNMENTS,
+                {
+                    method: 'GET',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            console.log('Accepted Assignments:', data);
+
+            if (!response.ok) {
+                console.log(
+                    'Schedule API Error:',
+                    data?.message || data
+                );
+                setAllSchedule([]);
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                setAllSchedule([]);
+                return;
+            }
+
+            // Current date in yyyy-MM-dd format
+            const today = new Date();
+
+            const year = today.getFullYear();
+            const month = String(
+                today.getMonth() + 1
+            ).padStart(2, '0');
+            const day = String(
+                today.getDate()
+            ).padStart(2, '0');
+
+            const currentDate = `${year}-${month}-${day}`;
+
+            console.log('Current Date:', currentDate);
+
+            // Only today's schedule
+            const todaySchedule = data.filter(item =>
+                item?.serviceDate === currentDate
+            );
+
+            console.log(
+                'Today Schedule:',
+                todaySchedule
+            );
+
+            setAllSchedule(todaySchedule);
+
+        } catch (error) {
+            console.log(
+                'Fetch Today Schedule Error:',
+                error
+            );
+
+            setAllSchedule([]);
+        }
+        finally {
+            setIsProfileLoading(false);
+        }
+    };
 
 
     const fetchUpcomingTasks = async (partnerLocation) => {
@@ -1105,68 +1186,7 @@ const DashboardScreen = ({ navigation }) => {
     };
 
     // Today's Schedule with professional data - ORDERED: In Progress first, then Upcoming, then Completed
-    const allSchedule = [
-        {
-            id: 2,
-            title: 'Electrical Work',
-            time: '11:30 AM',
-            client: 'Mrs. Patel',
-            location: 'Bandra West',
-            distance: '4.8 km',
-            status: 'in-progress',
-            icon: '⚡',
-            statusColor: '#FF8C00',
-            priority: 1,
-        },
-        {
-            id: 3,
-            title: 'Cleaning Service',
-            time: '2:00 PM',
-            client: 'Mr. Singh',
-            location: 'Juhu',
-            distance: '3.2 km',
-            status: 'upcoming',
-            icon: '🧹',
-            statusColor: '#2196F3',
-            priority: 2,
-        },
-        {
-            id: 4,
-            title: 'AC Repair',
-            time: '4:30 PM',
-            client: 'Ms. Reddy',
-            location: 'Powai',
-            distance: '6.1 km',
-            status: 'upcoming',
-            icon: '❄️',
-            statusColor: '#2196F3',
-            priority: 2,
-        },
-        {
-            id: 5,
-            title: 'Painting Work',
-            time: '6:00 PM',
-            client: 'Mr. Gupta',
-            location: 'Malad',
-            distance: '5.3 km',
-            status: 'upcoming',
-            icon: '🎨',
-            statusColor: '#2196F3',
-            priority: 2,
-        },
-        {
-            id: 1,
-            title: 'Plumbing Repair',
-            time: '9:00 AM',
-            client: 'Mr. Sharma',
-            location: 'Andheri East',
-            distance: '2.5 km',
-            status: 'completed',
-            icon: '🔧',
-            statusColor: '#4CAF50',
-            priority: 3,
-        },
-    ];
+
 
     // Sort schedule: In Progress first, then Upcoming, then Completed
     const sortedSchedule = [...allSchedule].sort((a, b) => a.priority - b.priority);
@@ -2866,40 +2886,43 @@ const DashboardScreen = ({ navigation }) => {
 
 
                         {/* Today's Schedule - White Background with Distinct Styles */}
-                        <View style={styles.scheduleContainer}>
-                            <View style={styles.scheduleHeader}>
-                                <Text style={styles.sectionTitle}>Today's Schedule</Text>
-                                <TouchableOpacity onPress={() => setShowAllSchedule(!showAllSchedule)}>
-                                    <Text style={styles.viewAllText}>
-                                        {showAllSchedule ? 'Show Less' : hasMoreItems ? 'View All' : ''}
-                                    </Text>
-                                </TouchableOpacity>
+
+                        {allSchedule.length > 0 && (
+                            <View style={styles.scheduleContainer}>
+                                <View style={styles.scheduleHeader}>
+                                    <Text style={styles.sectionTitle}>Today's Schedule</Text>
+                                    <TouchableOpacity onPress={() => setShowAllSchedule(!showAllSchedule)}>
+                                        <Text style={styles.viewAllText}>
+                                            {showAllSchedule ? 'Show Less' : hasMoreItems ? 'View All' : ''}
+                                        </Text>
+                                    </TouchableOpacity>
+                                </View>
+                                <FlatList
+                                    data={displayedSchedule}
+                                    keyExtractor={(item) => item.id.toString()}
+                                    renderItem={renderScheduleItem}
+                                    scrollEnabled={false}
+                                />
+                                {!showAllSchedule && hasMoreItems && (
+                                    <TouchableOpacity
+                                        style={styles.viewAllButton}
+                                        onPress={() => setShowAllSchedule(true)}
+                                    >
+                                        <Text style={styles.viewAllButtonText}>View All {sortedSchedule.length} Tasks</Text>
+
+                                        <Image
+                                            source={require('../../asset/arrow-forward.png')}
+                                            style={{
+                                                width: 16,
+                                                height: 16,
+                                                tintColor: "#FF8C00",
+
+                                            }}
+                                        />
+                                    </TouchableOpacity>
+                                )}
                             </View>
-                            <FlatList
-                                data={displayedSchedule}
-                                keyExtractor={(item) => item.id.toString()}
-                                renderItem={renderScheduleItem}
-                                scrollEnabled={false}
-                            />
-                            {!showAllSchedule && hasMoreItems && (
-                                <TouchableOpacity
-                                    style={styles.viewAllButton}
-                                    onPress={() => setShowAllSchedule(true)}
-                                >
-                                    <Text style={styles.viewAllButtonText}>View All {sortedSchedule.length} Tasks</Text>
-
-                                    <Image
-                                        source={require('../../asset/arrow-forward.png')}
-                                        style={{
-                                            width: 16,
-                                            height: 16,
-                                            tintColor: "#FF8C00",
-
-                                        }}
-                                    />
-                                </TouchableOpacity>
-                            )}
-                        </View>
+                        )}
 
                         <View style={{ alignItems: 'flex-end', flexDirection: 'raw', justifyContent: 'flex-end', marginBottom: 10 }}>
                             <TouchableOpacity style={[styles.taskModalAcceptButton, { paddingHorizontal: 10 }]} onPress={() => fetchNewTasks(location)} disabled={isNewTaskLoading}>

@@ -13,7 +13,11 @@ import {
     Image,
     Modal,
     Alert,
+    Linking
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import API from '../../util/API';
+import Loader from '../../util/Loader';
 
 
 const { width, height } = Dimensions.get('window');
@@ -36,142 +40,11 @@ const ScheduleScreen = ({ navigation }) => {
     const headerOpacity = useRef(new Animated.Value(1)).current;
     const headerTranslateY = useRef(new Animated.Value(0)).current;
 
+    const [scheduleData, setScheduleData] = useState({});
+    const [isLoading, setIsLoading] = useState(false);
+
     // Dummy schedule data with multiple description items
-    const scheduleData = {
-        '2026-07-06': [
-            {
-                id: 1,
-                title: 'Plumbing Repair',
-                time: '9:00 AM',
-                duration: '2 hrs',
-                client: 'Mr. Sharma',
-                location: 'Andheri East',
-                status: 'completed',
-                amount: '₹1,200',
-                descriptions: [
-                    'Fix leaking kitchen pipe',
-                    'Replace bathroom faucet',
-                    'Check water pressure',
-                    'Install new pipe fittings',
-                ]
-            },
-            {
-                id: 2,
-                title: 'Electrical Work',
-                time: '11:30 AM',
-                duration: '1.5 hrs',
-                client: 'Mrs. Patel',
-                location: 'Bandra West',
-                status: 'in-progress',
-                amount: '₹850',
-                descriptions: [
-                    'Install new wiring',
-                    'Replace switch board',
-                    'Fix lighting fixtures',
-                ]
-            },
-            {
-                id: 3,
-                title: 'Cleaning Service',
-                time: '3:00 PM',
-                duration: '3 hrs',
-                client: 'Mr. Singh',
-                location: 'Juhu',
-                status: 'upcoming',
-                amount: '₹2,500',
-                descriptions: [
-                    'Deep cleaning of entire house',
-                    'Sofa and carpet cleaning',
-                    'Window cleaning',
-                    'Kitchen sanitization',
-                ]
-            },
-        ],
-        '2026-07-07': [
-            {
-                id: 4,
-                title: 'AC Repair',
-                time: '10:00 AM',
-                duration: '2.5 hrs',
-                client: 'Ms. Reddy',
-                location: 'Powai',
-                status: 'upcoming',
-                amount: '₹1,500',
-                descriptions: [
-                    'AC gas refilling',
-                    'Filter cleaning',
-                    'Compressor check',
-                    'Temperature calibration',
-                ]
-            },
-            {
-                id: 5,
-                title: 'Painting Work',
-                time: '3:30 PM',
-                duration: '4 hrs',
-                client: 'Mr. Gupta',
-                location: 'Malad',
-                status: 'upcoming',
-                amount: '₹3,200',
-                descriptions: [
-                    'Interior wall painting - 2 rooms',
-                    'Ceiling painting',
-                    'Door frame painting',
-                    'Wall preparation and primer',
-                ]
-            },
-        ],
-        '2026-07-08': [
-            {
-                id: 6,
-                title: 'Plumbing Repair',
-                time: '9:30 AM',
-                duration: '2 hrs',
-                client: 'Mr. Kumar',
-                location: 'Andheri West',
-                status: 'upcoming',
-                amount: '₹1,100',
-                descriptions: [
-                    'Fix water leakage in bathroom',
-                    'Replace water tap',
-                    'Check pipe connections',
-                ]
-            },
-        ],
-        '2026-07-09': [
-            {
-                id: 7,
-                title: 'Electrical Work',
-                time: '1:00 PM',
-                duration: '1.5 hrs',
-                client: 'Mrs. Shah',
-                location: 'Bandra East',
-                status: 'upcoming',
-                amount: '₹950',
-                descriptions: [
-                    'Fan installation',
-                    'Light fitting replacement',
-                    'Wiring check',
-                ]
-            },
-            {
-                id: 8,
-                title: 'Cleaning Service',
-                time: '4:00 PM',
-                duration: '2.5 hrs',
-                client: 'Mr. Mehta',
-                location: 'Juhu',
-                status: 'upcoming',
-                amount: '₹1,800',
-                descriptions: [
-                    'Office cleaning',
-                    'Sanitization',
-                    'Floor mopping',
-                    'Trash disposal',
-                ]
-            },
-        ],
-    };
+
 
     const ORANGE_COLOR = '#FF8C00';
 
@@ -200,6 +73,311 @@ const ScheduleScreen = ({ navigation }) => {
             scrollY.removeAllListeners();
         };
     }, []);
+
+
+    useEffect(() => {
+        fetchAcceptedAssignments();
+    }, []);
+
+
+
+    const formatTime = (time) => {
+        if (!time) return '';
+
+        const [hours, minutes] = time.split(':');
+
+        const hour = Number(hours);
+        const minute = Number(minutes);
+
+        const period = hour >= 12 ? 'PM' : 'AM';
+        const formattedHour = hour % 12 || 12;
+
+        return `${formattedHour}:${String(minute).padStart(2, '0')} ${period}`;
+    };
+
+
+    const calculateDuration = (startTime, endTime) => {
+        if (!startTime || !endTime) return '';
+
+        const [startHour, startMinute] = startTime.split(':').map(Number);
+        const [endHour, endMinute] = endTime.split(':').map(Number);
+
+        const startTotalMinutes = startHour * 60 + startMinute;
+        const endTotalMinutes = endHour * 60 + endMinute;
+
+        let difference = endTotalMinutes - startTotalMinutes;
+
+        if (difference < 0) {
+            difference += 24 * 60;
+        }
+
+        const hours = Math.floor(difference / 60);
+        const minutes = difference % 60;
+
+        if (hours > 0 && minutes > 0) {
+            return `${hours} hr ${minutes} min`;
+        }
+
+        if (hours > 0) {
+            return `${hours} ${hours === 1 ? 'hr' : 'hrs'}`;
+        }
+
+        return `${minutes} min`;
+    };
+
+    const getScheduleStatus = (serviceDate, startTime, endTime) => {
+        if (!serviceDate) return 'upcoming';
+
+        const today = new Date();
+
+        const currentDate = `${today.getFullYear()}-${String(
+            today.getMonth() + 1
+        ).padStart(2, '0')}-${String(
+            today.getDate()
+        ).padStart(2, '0')}`;
+
+        if (serviceDate > currentDate) {
+            return 'upcoming';
+        }
+
+        if (serviceDate < currentDate) {
+            return 'completed';
+        }
+
+        // serviceDate === today
+
+        if (!startTime || !endTime) {
+            return 'upcoming';
+        }
+
+        const now = new Date();
+
+        const [startHour, startMinute] = startTime
+            .split(':')
+            .map(Number);
+
+        const [endHour, endMinute] = endTime
+            .split(':')
+            .map(Number);
+
+        const start = new Date();
+        start.setHours(startHour, startMinute, 0, 0);
+
+        const end = new Date();
+        end.setHours(endHour, endMinute, 0, 0);
+
+        if (now < start) {
+            return 'upcoming';
+        }
+
+        if (now >= start && now <= end) {
+            return 'in-progress';
+        }
+
+        return 'completed';
+    };
+
+
+    const fetchAcceptedAssignments = async () => {
+        try {
+            setIsLoading(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                console.log('No authentication token found');
+                setScheduleData({});
+                return;
+            }
+
+            const response = await fetch(
+                API.PARTNER_ACCEPTED_BOOKING_ASSIGNMENTS,
+                {
+                    method: 'GET',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const data = await response.json();
+
+            console.log(
+                'Accepted Assignments Response:',
+                JSON.stringify(data, null, 2)
+            );
+
+            if (!response.ok) {
+                console.log(
+                    'Accepted Assignments API Error:',
+                    data
+                );
+
+                setScheduleData({});
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                setScheduleData({});
+                return;
+            }
+
+            const groupedSchedule = {};
+
+            data.forEach((item) => {
+                if (!item?.serviceDate) {
+                    return;
+                }
+
+                const scheduleItem = {
+                    id: item.assignmentId,
+
+                    assignmentId: item.assignmentId,
+
+                    bookingNo: item.bookingNo,
+
+                    title: item.serviceName || 'Service',
+
+                    time: formatTime(item.startTime),
+
+                    duration: calculateDuration(
+                        item.startTime,
+                        item.endTime
+                    ),
+
+                    client: item.customerName || 'Customer',
+
+                    location: [
+                        item.addressLine2,
+                        item.city,
+                        item.state,
+                        item.postalCode,
+                    ]
+                        .filter(Boolean)
+                        .join(', '),
+
+                    status: getScheduleStatus(
+                        item.serviceDate,
+                        item.startTime,
+                        item.endTime
+                    ),
+
+                    amount:
+                        item.rate !== undefined &&
+                            item.rate !== null
+                            ? `₹${Number(item.rate).toLocaleString('en-IN')}`
+                            : '₹0',
+
+                    descriptions: item.serviceNotes
+                        ? [item.serviceNotes]
+                        : [],
+
+                    // Keep original API data
+                    serviceDate: item.serviceDate,
+                    startTime: item.startTime,
+                    endTime: item.endTime,
+
+                    addressLine1: item.addressLine1,
+                    addressLine2: item.addressLine2,
+                    city: item.city,
+                    state: item.state,
+                    postalCode: item.postalCode,
+
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+
+                    customerPhone: item.customerPhone,
+
+                    assignedDate: item.assignedDate,
+                    acceptedDate: item.acceptedDate,
+
+                    isLatest: item.isLatest,
+                };
+
+                if (!groupedSchedule[item.serviceDate]) {
+                    groupedSchedule[item.serviceDate] = [];
+                }
+
+                groupedSchedule[item.serviceDate].push(scheduleItem);
+            });
+
+            // Sort each date's schedules by start time
+            Object.keys(groupedSchedule).forEach((date) => {
+                groupedSchedule[date].sort((a, b) => {
+                    return String(a.startTime || '').localeCompare(
+                        String(b.startTime || '')
+                    );
+                });
+            });
+
+            console.log(
+                'Grouped Schedule:',
+                JSON.stringify(groupedSchedule, null, 2)
+            );
+
+            setScheduleData(groupedSchedule);
+
+        } catch (error) {
+            console.log(
+                'Fetch Accepted Assignments Error:',
+                error
+            );
+
+            setScheduleData({});
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+    const openMap = async (latitude, longitude) => {
+        if (
+            latitude === undefined ||
+            latitude === null ||
+            longitude === undefined ||
+            longitude === null
+        ) {
+            Alert.alert(
+                'Location Unavailable',
+                'Location coordinates are not available for this service.'
+            );
+            return;
+        }
+
+        const lat = Number(latitude);
+        const lng = Number(longitude);
+
+        if (Number.isNaN(lat) || Number.isNaN(lng)) {
+            Alert.alert(
+                'Invalid Location',
+                'The location coordinates are invalid.'
+            );
+            return;
+        }
+
+        const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+
+        try {
+            const supported = await Linking.canOpenURL(url);
+
+            if (supported) {
+                await Linking.openURL(url);
+            } else {
+                Alert.alert(
+                    'Unable to Open Map',
+                    'No map application is available on this device.'
+                );
+            }
+        } catch (error) {
+            console.log('Open Map Error:', error);
+
+            Alert.alert(
+                'Error',
+                'Unable to open the map.'
+            );
+        }
+    };
 
     // Get schedule for specific date
     const getScheduleForDate = (date) => {
@@ -251,8 +429,14 @@ const ScheduleScreen = ({ navigation }) => {
     // Navigate day
     const navigateDay = (direction) => {
         const newDate = new Date(selectedDate);
-        newDate.setDate(newDate.getDate() + direction);
+
+        newDate.setDate(
+            newDate.getDate() + direction
+        );
+
         setSelectedDate(newDate);
+
+        // Keep calendar month/year synchronized
         setCurrentMonth(newDate.getMonth());
         setCurrentYear(newDate.getFullYear());
     };
@@ -443,7 +627,12 @@ const ScheduleScreen = ({ navigation }) => {
                                     />
                                     <Text style={styles.modalInfoLabel}>Location</Text>
                                     <Text style={styles.modalInfoValue}>{selectedTask.location}</Text>
-                                    <TouchableOpacity style={styles.mapIconButtonModal}>
+                                    <TouchableOpacity style={styles.mapIconButtonModal} onPress={() =>
+                                        openMap(
+                                            selectedTask?.latitude,
+                                            selectedTask?.longitude
+                                        )
+                                    }>
                                         <View style={styles.mapIconHighlight}>
 
                                             <Image
@@ -481,19 +670,7 @@ const ScheduleScreen = ({ navigation }) => {
                             </View>
 
                             {/* Descriptions with FlatList */}
-                            <View style={styles.modalSection}>
-                                <Text style={styles.modalSectionTitle}>Task Descriptions</Text>
-                                {selectedTask.descriptions && selectedTask.descriptions.length > 0 ? (
-                                    <FlatList
-                                        data={selectedTask.descriptions}
-                                        keyExtractor={(item, index) => index.toString()}
-                                        renderItem={renderDescriptionItem}
-                                        scrollEnabled={false}
-                                    />
-                                ) : (
-                                    <Text style={styles.noDescriptionText}>No descriptions available</Text>
-                                )}
-                            </View>
+
 
                             {/* Amount */}
                             <View style={styles.modalAmountSection}>
@@ -514,7 +691,7 @@ const ScheduleScreen = ({ navigation }) => {
                             </View>
 
                             {/* Action Buttons */}
-                            <View style={styles.modalActions}>
+                            {/* <View style={styles.modalActions}>
                                 <TouchableOpacity style={styles.modalActionButton} onPress={closeModal}>
                                     <Text style={styles.modalActionButtonText}>Close</Text>
                                 </TouchableOpacity>
@@ -537,12 +714,23 @@ const ScheduleScreen = ({ navigation }) => {
                                         }}
                                     />
                                 </TouchableOpacity>
-                            </View>
+                            </View> */}
                         </TouchableOpacity>
                     </Animated.View>
                 </TouchableOpacity>
             </Modal>
         );
+    };
+
+
+    const truncateText = (text, maxLength = 25) => {
+        if (!text) return '';
+
+        if (text.length <= maxLength) {
+            return text;
+        }
+
+        return `${text.substring(0, maxLength)}...`;
     };
 
     // Render schedule card with view button on far right
@@ -597,8 +785,14 @@ const ScheduleScreen = ({ navigation }) => {
                                     tintColor: "#888",
                                 }}
                             />
-                            <Text style={styles.scheduleCardMetaText}>{item.location}</Text>
-                            <TouchableOpacity style={styles.mapIconButtonCard}>
+                            <Text style={styles.scheduleCardMetaText}> {truncateText(item.location, 25)}</Text>
+                            <TouchableOpacity style={styles.mapIconButtonCard}
+                                onPress={() =>
+                                    openMap(
+                                        item.latitude,
+                                        item.longitude
+                                    )
+                                }>
                                 <View style={styles.mapIconHighlight}>
 
                                     <Image
@@ -645,72 +839,102 @@ const ScheduleScreen = ({ navigation }) => {
     // Render today view
     const renderTodayView = () => {
         const today = new Date();
-        const todaySchedules = getScheduleForDate(today);
+
+        // IMPORTANT:
+        // The single-day view should display the selected date,
+        // not always the current date.
+        const selectedDaySchedules = getScheduleForDate(selectedDate);
 
         return (
             <View style={styles.todayView}>
                 <View style={styles.todayHeader}>
-                    <TouchableOpacity onPress={() => navigateDay(-1)} style={styles.navButton}>
-                        
+
+                    {/* Previous Day */}
+                    <TouchableOpacity
+                        onPress={() => navigateDay(-1)}
+                        style={styles.navButton}
+                    >
                         <Image
                             source={require('../../asset/chevron-back.png')}
                             style={{
                                 width: 24,
                                 height: 24,
-                                tintColor: "#1A1A1A",
-
+                                tintColor: '#1A1A1A',
                             }}
                         />
                     </TouchableOpacity>
+
+                    {/* Selected Date */}
                     <View style={styles.todayTitleContainer}>
                         <Text style={styles.todayTitle}>
-                            {selectedDate.toLocaleString('default', { weekday: 'long', month: 'long', day: 'numeric' })}
+                            {selectedDate.toLocaleString('default', {
+                                weekday: 'long',
+                                month: 'long',
+                                day: 'numeric',
+                            })}
                         </Text>
+
                         {selectedDate.toDateString() === today.toDateString() && (
                             <View style={styles.todayBadge}>
-                                <Text style={styles.todayBadgeText}>Today</Text>
+                                <Text style={styles.todayBadgeText}>
+                                    Today
+                                </Text>
                             </View>
                         )}
                     </View>
-                    <TouchableOpacity onPress={() => navigateDay(1)} style={styles.navButton}>
-                       
+
+                    {/* Next Day */}
+                    <TouchableOpacity
+                        onPress={() => navigateDay(1)}
+                        style={styles.navButton}
+                    >
                         <Image
                             source={require('../../asset/arrow-forward.png')}
                             style={{
                                 width: 24,
                                 height: 24,
-                                tintColor: "#1A1A1A",
-
+                                tintColor: '#1A1A1A',
                             }}
                         />
                     </TouchableOpacity>
+
                 </View>
 
                 <Text style={styles.scheduleCount}>
-                    {todaySchedules.length} {todaySchedules.length === 1 ? 'task' : 'tasks'} scheduled
+                    {selectedDaySchedules.length}{' '}
+                    {selectedDaySchedules.length === 1
+                        ? 'task'
+                        : 'tasks'}{' '}
+                    scheduled
                 </Text>
 
-                {todaySchedules.length > 0 ? (
+                {selectedDaySchedules.length > 0 ? (
                     <FlatList
-                        data={todaySchedules}
-                        keyExtractor={(item) => item.id.toString()}
+                        data={selectedDaySchedules}
+                        keyExtractor={(item) =>
+                            String(item.assignmentId || item.id)
+                        }
                         renderItem={renderScheduleCard}
                         scrollEnabled={false}
                     />
                 ) : (
                     <View style={styles.emptyContainer}>
-                        
                         <Image
                             source={require('../../asset/calendar-outline.png')}
                             style={{
                                 width: 48,
                                 height: 48,
-                                tintColor: "#CCC",
-
+                                tintColor: '#CCC',
                             }}
                         />
-                        <Text style={styles.emptyText}>No schedules for this day</Text>
-                        <Text style={styles.emptySubtext}>You're all set! Enjoy your day off.</Text>
+
+                        <Text style={styles.emptyText}>
+                            No schedules for this day
+                        </Text>
+
+                        <Text style={styles.emptySubtext}>
+                            You're all set! Enjoy your day off.
+                        </Text>
                     </View>
                 )}
             </View>
@@ -764,7 +988,7 @@ const ScheduleScreen = ({ navigation }) => {
                         {weekDays[6].date.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </Text>
                     <TouchableOpacity onPress={() => navigateWeek(1)} style={styles.navButton}>
-                       
+
                         <Image
                             source={require('../../asset/arrow-forward.png')}
                             style={{
@@ -817,13 +1041,15 @@ const ScheduleScreen = ({ navigation }) => {
                 {weekSchedules.length > 0 ? (
                     <FlatList
                         data={weekSchedules}
-                        keyExtractor={(item) => item.id.toString()}
+                        keyExtractor={(item) =>
+                            String(item.assignmentId || item.id)
+                        }
                         renderItem={renderScheduleCard}
                         scrollEnabled={false}
                     />
                 ) : (
                     <View style={styles.emptyContainer}>
-                        
+
                         <Image
                             source={require('../../asset/calendar-outline.png')}
                             style={{
@@ -872,9 +1098,9 @@ const ScheduleScreen = ({ navigation }) => {
                     </TouchableOpacity>
                     <Text style={styles.monthTitle}>{monthName} {currentYear}</Text>
                     <TouchableOpacity onPress={() => navigateMonth(1)} style={styles.navButton}>
-                        
+
                     </TouchableOpacity>
-                   
+
                     <TouchableOpacity onPress={() => navigateMonth(1)} style={styles.navButton}>
                         <Image
                             source={require('../../asset/arrow-forward.png')}
@@ -933,7 +1159,9 @@ const ScheduleScreen = ({ navigation }) => {
                 {selectedDateSchedules.length > 0 ? (
                     <FlatList
                         data={selectedDateSchedules}
-                        keyExtractor={(item) => item.id.toString()}
+                        keyExtractor={(item) =>
+                            String(item.assignmentId || item.id)
+                        }
                         renderItem={renderScheduleCard}
                         scrollEnabled={false}
                     />
@@ -947,7 +1175,7 @@ const ScheduleScreen = ({ navigation }) => {
                                 tintColor: "#CCC",
                             }}
                         />
-                        
+
                         <Text style={styles.emptyText}>No schedules for this day</Text>
                     </View>
                 )}
@@ -959,89 +1187,100 @@ const ScheduleScreen = ({ navigation }) => {
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor={ORANGE_COLOR} />
 
-            {/* Curved Orange Toolbar */}
-            <Animated.View
-                style={[
-                    styles.toolbarContainer,
-                    {
-                        opacity: headerOpacity,
-                        transform: [{ translateY: headerTranslateY }],
-                        backgroundColor: ORANGE_COLOR,
-                    }
-                ]}
-            >
-                <View style={styles.toolbarContent}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarBack}>
-                       
-                        <Image
-                            source={require('../../asset/arrow-back.png')}
-                            style={{
-                                width: 24,
-                                height: 24,
-                                tintColor: "#FFFFFF",
-                            }}
-                        />
-                    </TouchableOpacity>
-                    <View style={styles.toolbarCenter}>
-                        <Text style={styles.toolbarTitle}>My Schedule</Text>
-                        <View style={styles.toolbarStatus}>
-                            <View style={[styles.toolbarStatusDot, { backgroundColor: '#FFFFFF' }]} />
-                            <Text style={styles.toolbarStatusText}>{viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}</Text>
+
+            {isLoading ? (
+
+                <Loader />
+            ) : (
+                <>
+
+                    {/* Curved Orange Toolbar */}
+                    <Animated.View
+                        style={[
+                            styles.toolbarContainer,
+                            {
+                                opacity: headerOpacity,
+                                transform: [{ translateY: headerTranslateY }],
+                                backgroundColor: ORANGE_COLOR,
+                            }
+                        ]}
+                    >
+                        <View style={styles.toolbarContent}>
+                            <TouchableOpacity onPress={() => navigation.goBack()} style={styles.toolbarBack}>
+
+                                <Image
+                                    source={require('../../asset/arrow-back.png')}
+                                    style={{
+                                        width: 24,
+                                        height: 24,
+                                        tintColor: "#FFFFFF",
+                                    }}
+                                />
+                            </TouchableOpacity>
+                            <View style={styles.toolbarCenter}>
+                                <Text style={styles.toolbarTitle}>My Schedule</Text>
+                                <View style={styles.toolbarStatus}>
+                                    <View style={[styles.toolbarStatusDot, { backgroundColor: '#FFFFFF' }]} />
+                                    <Text style={styles.toolbarStatusText}>{viewMode.charAt(0).toUpperCase() + viewMode.slice(1)}</Text>
+                                </View>
+                            </View>
+
                         </View>
+                        {/* Curved bottom */}
+                        <View style={[styles.toolbarCurve, { backgroundColor: ORANGE_COLOR }]} />
+                    </Animated.View>
+
+                    {/* View Mode Toggle */}
+                    <View style={styles.viewToggleContainer}>
+                        <TouchableOpacity
+                            style={[styles.viewToggleButton, viewMode === 'today' && styles.viewToggleActive]}
+                            onPress={() => setViewMode('today')}
+                        >
+                            <Text style={[styles.viewToggleText, viewMode === 'today' && styles.viewToggleTextActive]}>
+                                Today
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.viewToggleButton, viewMode === 'weekly' && styles.viewToggleActive]}
+                            onPress={() => setViewMode('weekly')}
+                        >
+                            <Text style={[styles.viewToggleText, viewMode === 'weekly' && styles.viewToggleTextActive]}>
+                                Weekly
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.viewToggleButton, viewMode === 'monthly' && styles.viewToggleActive]}
+                            onPress={() => setViewMode('monthly')}
+                        >
+                            <Text style={[styles.viewToggleText, viewMode === 'monthly' && styles.viewToggleTextActive]}>
+                                Monthly
+                            </Text>
+                        </TouchableOpacity>
                     </View>
-                   
-                </View>
-                {/* Curved bottom */}
-                <View style={[styles.toolbarCurve, { backgroundColor: ORANGE_COLOR }]} />
-            </Animated.View>
 
-            {/* View Mode Toggle */}
-            <View style={styles.viewToggleContainer}>
-                <TouchableOpacity
-                    style={[styles.viewToggleButton, viewMode === 'today' && styles.viewToggleActive]}
-                    onPress={() => setViewMode('today')}
-                >
-                    <Text style={[styles.viewToggleText, viewMode === 'today' && styles.viewToggleTextActive]}>
-                        Today
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.viewToggleButton, viewMode === 'weekly' && styles.viewToggleActive]}
-                    onPress={() => setViewMode('weekly')}
-                >
-                    <Text style={[styles.viewToggleText, viewMode === 'weekly' && styles.viewToggleTextActive]}>
-                        Weekly
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.viewToggleButton, viewMode === 'monthly' && styles.viewToggleActive]}
-                    onPress={() => setViewMode('monthly')}
-                >
-                    <Text style={[styles.viewToggleText, viewMode === 'monthly' && styles.viewToggleTextActive]}>
-                        Monthly
-                    </Text>
-                </TouchableOpacity>
-            </View>
+                    <Animated.ScrollView
+                        style={styles.container}
+                        showsVerticalScrollIndicator={false}
+                        scrollEventThrottle={16}
+                        onScroll={Animated.event(
+                            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+                            { useNativeDriver: false }
+                        )}
+                        contentContainerStyle={styles.scrollContent}
+                    >
+                        {viewMode === 'today' && renderTodayView()}
+                        {viewMode === 'weekly' && renderWeeklyView()}
+                        {viewMode === 'monthly' && renderMonthlyView()}
 
-            <Animated.ScrollView
-                style={styles.container}
-                showsVerticalScrollIndicator={false}
-                scrollEventThrottle={16}
-                onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-                    { useNativeDriver: false }
-                )}
-                contentContainerStyle={styles.scrollContent}
-            >
-                {viewMode === 'today' && renderTodayView()}
-                {viewMode === 'weekly' && renderWeeklyView()}
-                {viewMode === 'monthly' && renderMonthlyView()}
+                        <View style={{ height: 20 }} />
+                    </Animated.ScrollView>
 
-                <View style={{ height: 20 }} />
-            </Animated.ScrollView>
+                    {/* Task Details Modal */}
+                    {renderTaskModal()}
 
-            {/* Task Details Modal */}
-            {renderTaskModal()}
+                </>
+
+            )}
         </SafeAreaView>
     );
 };

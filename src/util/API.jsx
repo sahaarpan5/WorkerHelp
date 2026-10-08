@@ -20,6 +20,9 @@ const API = {
    PARTNER_BOOKING_ASSIGNMENTS: `${BASE_URL}/Partner/booking/assignments`,
    ACCEPT_PARTNER_ASSIGNMENT: (assignmentId) =>
       `${BASE_URL}/Partner/assignments/${assignmentId}/accept`,
+
+   PARTNER_ACCEPTED_BOOKING_ASSIGNMENTS:
+    `${BASE_URL}/Partner/booking/assignments?status=Accepted`,
 };
 
 // Add more endpoints here as needed
