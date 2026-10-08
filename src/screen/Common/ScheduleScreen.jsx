@@ -241,6 +241,8 @@ const ScheduleScreen = ({ navigation }) => {
 
                     time: formatTime(item.startTime),
 
+                    endtime: formatTime(item.endTime),
+
                     duration: calculateDuration(
                         item.startTime,
                         item.endTime
@@ -598,7 +600,7 @@ const ScheduleScreen = ({ navigation }) => {
                                         }}
                                     />
                                     <Text style={styles.modalInfoLabel}>Time</Text>
-                                    <Text style={styles.modalInfoValue}>{selectedTask.time}</Text>
+                                    <Text style={styles.modalInfoValue}>{selectedTask.time}-{selectedTask.endtime}</Text>
                                 </View>
                                 <View style={styles.modalInfoRow}>
 
