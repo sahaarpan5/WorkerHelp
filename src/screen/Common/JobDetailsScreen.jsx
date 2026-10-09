@@ -24,6 +24,61 @@ import MapView, { Marker } from 'react-native-maps';
 const { width, height } = Dimensions.get('window');
 
 const JobDetailsScreen = ({ navigation, route }) => {
+
+    const params = route?.params || {};
+    const jobDetails = {
+        id: params.id ?? params.assignmentId ?? '',
+        assignmentId: params.assignmentId ?? params.id ?? '',
+        bookingNo: params.bookingNo ?? '',
+        jobType: params.serviceName ?? params.title ?? 'Home Service',
+        customerName: params.customerName ?? 'Customer',
+        customerRating: params.customerRating ?? null,
+        customerPhone: params.customerPhone ?? '',
+        location:
+            params.address ??
+            [
+                params.addressLine1,
+                params.addressLine2,
+                params.city,
+                params.state,
+                params.postalCode,
+            ]
+                .filter(Boolean)
+                .join(', ') ??
+            'Address not available',
+        coordinates: {
+            latitude:
+                params.latitude != null
+                    ? Number(params.latitude)
+                    : null,
+            longitude:
+                params.longitude != null
+                    ? Number(params.longitude)
+                    : null,
+        },
+        status: params.status ?? 'Accepted',
+        time:
+            params.time ??
+            `${params.startTime || '--:--'} - ${params.endTime || '--:--'}`,
+        distance: params.distance ?? 'Not available',
+        duration:
+            params.hours != null
+                ? `${params.hours} hours`
+                : params.duration ?? 'Not available',
+        price:
+            params.rate != null
+                ? `₹${params.rate}`
+                : 'Not available',
+        serviceNotes: params.serviceNotes ?? '',
+        subServices: Array.isArray(params.subServices)
+            ? params.subServices
+            : [],
+        jobList: Array.isArray(params.jobList)
+            ? params.jobList
+            : params.serviceNotes
+                ? [params.serviceNotes]
+                : [],
+    };
     const [currentStatus, setCurrentStatus] = useState('upcoming');
     const [showOTPModal, setShowOTPModal] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '']);
@@ -48,34 +103,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
     const endOtpRefs = useRef([]);
 
     // Dummy job data
-    const jobDetails = {
-        id: 1,
-        jobType: 'Cleaning Service',
-        customerName: 'Rajesh Sharma',
-        customerRating: 4.8,
-        customerPhone: '+91 98765 43210',
-        location: 'Andheri East, Mumbai - 400093',
-        coordinates: { latitude: 22.599873, longitude: 88.472367 },
-        status: 'upcoming',
-        time: '11:30 AM',
-        distance: '2.5 km',
-        duration: '2 hrs',
-        price: '₹1,200',
-        subServices: [
-            { id: 1, name: 'Bathroom Cleaning', icon: '🛁' },
-            { id: 2, name: 'Sofa Cleaning', icon: '🛋️' },
-            { id: 3, name: 'Floor Mopping', icon: '🧹' },
-            { id: 4, name: 'Kitchen Cleaning', icon: '🍳' },
-            { id: 5, name: 'Window Cleaning', icon: '🪟' },
-        ],
-        jobList: [
-            'Fix leaking kitchen pipe',
-            'Replace bathroom faucet',
-            'Check water pressure',
-            'Install new pipe fittings',
-            'Test for any other leaks',
-        ],
-    };
+
 
     const totalServices = jobDetails.subServices.length;
     const completedServices = Object.keys(capturedImages).length;
@@ -468,7 +496,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                         style={styles.cardBackground}
                         imageStyle={styles.cardBackgroundImage}
                     >
-                        <View style={[styles.cardOverlay, { backgroundColor: '#dab319e8' }]}>
+                        <View style={[styles.cardOverlay, { backgroundColor: '#dab319ef' }]}>
                             {/* Card Chip */}
                             <View style={styles.cardChipContainer}>
                                 <View style={[styles.cardChip, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
@@ -550,10 +578,23 @@ const JobDetailsScreen = ({ navigation, route }) => {
                             {/* Card Footer */}
                             <View style={styles.cardFooter}>
                                 <View style={styles.cardFooterLeft}>
-                                    <Text style={styles.cardFooterLabel}>CUSTOMER ID</Text>
-                                    <Text style={styles.cardFooterValue}>#HH-{String(jobDetails.id).padStart(4, '0')}</Text>
+                                    <Text style={styles.cardFooterLabel}>BOOKING ID</Text>
+                                    <Text style={styles.cardFooterValue}>#HH-{String(jobDetails.bookingNo).padStart(4, '0')}</Text>
                                 </View>
-                                <TouchableOpacity style={[styles.cardCallButton, { backgroundColor: 'rgba(255,255,255,0.2)', borderColor: 'rgba(255,255,255,0.3)' }]}>
+                                <TouchableOpacity style={[styles.cardCallButton, { backgroundColor: 'rgba(255,255,255,0.2)', borderColor: 'rgba(255,255,255,0.3)' }]}
+                                    onPress={() => {
+                                        if (!jobDetails.customerPhone) {
+                                            Alert.alert('Unavailable', 'Customer phone number is not available.');
+                                            return;
+                                        }
+
+                                        Linking.openURL(
+                                            `tel:${jobDetails.customerPhone}`
+                                        ).catch(() => {
+                                            Alert.alert('Error', 'Unable to make the call.');
+                                        });
+                                    }}
+                                >>
                                     <Image
                                         source={require('../../asset/telephone.png')}
                                         style={{
@@ -644,7 +685,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                                 </View>
                             </Animated.View> */}
 
-                           
+
                         </View>
 
                         <View style={styles.mapOverlay}>
@@ -677,27 +718,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                 </View>
 
                 {/* Professional Job Tasks */}
-                <View style={styles.card}>
-                    <View style={styles.cardHeader}>
-
-                        <Image
-                            source={require('../../asset/clipboard-outline.png')}
-                            style={{
-                                width: 22,
-                                height: 22,
-                                tintColor: "#9C27B0"
-
-                            }}
-                        />
-                        <Text style={styles.cardTitle}>Job Tasks</Text>
-                    </View>
-                    <FlatList
-                        data={jobDetails.jobList}
-                        keyExtractor={(item, index) => index.toString()}
-                        renderItem={renderJobItem}
-                        scrollEnabled={false}
-                    />
-                </View>
+               
 
                 {/* Action Button */}
                 {renderActionButton()}
@@ -1126,7 +1147,7 @@ const styles = StyleSheet.create({
     },
     cardDetailText: {
         fontSize: 12,
-        color: 'rgba(255,255,255,0.85)',
+        color: '#FFF',
         fontWeight: '500',
     },
     // Card Footer
@@ -1140,7 +1161,7 @@ const styles = StyleSheet.create({
     },
     cardFooterLabel: {
         fontSize: 8,
-        color: 'rgba(255,255,255,0.5)',
+        color: '#FFF',
         fontWeight: '600',
         letterSpacing: 1.5,
     },

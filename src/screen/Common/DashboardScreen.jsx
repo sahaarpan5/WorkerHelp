@@ -115,7 +115,7 @@ const DashboardScreen = ({ navigation }) => {
 
                 console.log('Profile Location Received:', location);
 
-                await fetchTodaySchedule();
+                await fetchTodaySchedule(location);
 
                 // 2. After fetchProfile completes, fetch upcoming tasks
                 await fetchUpcomingTasks(location);
@@ -623,7 +623,10 @@ const DashboardScreen = ({ navigation }) => {
 
 
 
-    const fetchTodaySchedule = async () => {
+
+
+
+    const fetchTodaySchedule = async (partnerLocation) => {
         setIsProfileLoading(true);
         try {
             const token = await AsyncStorage.getItem('token');
@@ -665,27 +668,87 @@ const DashboardScreen = ({ navigation }) => {
             // Current date in yyyy-MM-dd format
             const today = new Date();
 
-            const year = today.getFullYear();
-            const month = String(
-                today.getMonth() + 1
-            ).padStart(2, '0');
-            const day = String(
-                today.getDate()
-            ).padStart(2, '0');
+            const currentDate = [
+                today.getFullYear(),
+                String(today.getMonth() + 1).padStart(2, '0'),
+                String(today.getDate()).padStart(2, '0'),
+            ].join('-');
 
-            const currentDate = `${year}-${month}-${day}`;
+            const todaySchedule = (Array.isArray(data) ? data : [])
+                .filter(item => item?.serviceDate === currentDate)
+                .map(item => {
+                    const startTime = item.startTime || '';
+                    const endTime = item.endTime || '';
 
-            console.log('Current Date:', currentDate);
+                    // Calculate duration in hours
+                    let hours = 0;
 
-            // Only today's schedule
-            const todaySchedule = data.filter(item =>
-                item?.serviceDate === currentDate
-            );
+                    if (startTime && endTime) {
+                        const [startHour, startMinute] = startTime
+                            .split(':')
+                            .map(Number);
 
-            console.log(
-                'Today Schedule:',
-                todaySchedule
-            );
+                        const [endHour, endMinute] = endTime
+                            .split(':')
+                            .map(Number);
+
+                        const startMinutes = startHour * 60 + startMinute;
+                        let endMinutes = endHour * 60 + endMinute;
+
+                        // Handle services that finish after midnight
+                        if (endMinutes < startMinutes) {
+                            endMinutes += 24 * 60;
+                        }
+
+                        hours = Number(
+                            ((endMinutes - startMinutes) / 60).toFixed(2)
+                        );
+                    }
+
+
+                    const distance = calculateDistance(
+                        partnerLocation?.latitude,
+                        partnerLocation?.longitude,
+                        item.latitude,
+                        item.longitude
+                    );
+
+                    return {
+                        ...item,
+                        id: item.assignmentId,
+                        assignmentId: item.assignmentId,
+                        bookingNo: item.bookingNo || '',
+                        serviceName: item.serviceName || 'Service',
+                        customerName: item.customerName || 'Customer',
+                        customerPhone: item.customerPhone || '',
+                        rate: Number(item.rate) || 0,
+                        icon: getServiceIcon(),
+
+                        address: [
+                            item.addressLine1,
+                            item.addressLine2,
+                            item.city,
+                            item.state,
+                            item.postalCode,
+                        ]
+                            .filter(Boolean)
+                            .join(', '),
+
+                        time: `${startTime.slice(0, 5) || '--:--'} - ${endTime.slice(0, 5) || '--:--'
+                            }`,
+
+                        hours,
+                        latitude:
+                            item.latitude != null ? Number(item.latitude) : null,
+                        longitude:
+                            item.longitude != null ? Number(item.longitude) : null,
+
+                        distance:
+                            distance !== null
+                                ? `${distance.toFixed(1)} km`
+                                : '—',
+                    };
+                });
 
             setAllSchedule(todaySchedule);
 
@@ -1607,7 +1670,40 @@ const DashboardScreen = ({ navigation }) => {
 
         return (
             <TouchableOpacity
-                onPress={() => navigation.navigate('JobDetailsScreen', { jobId: item.id })}
+                onPress={() => {
+                    navigation.navigate('JobDetailsScreen', {
+                        id: item.id,
+                        assignmentId: item.assignmentId,
+                        bookingNo: item.bookingNo,
+
+                        serviceName: item.serviceName,
+                        customerName: item.customerName,
+                        customerPhone: item.customerPhone,
+
+                        time: item.time,
+                        startTime: item.startTime,
+                        endTime: item.endTime,
+                        hours: item.hours,
+
+                        distance: item.distance,
+                        address: item.address,
+
+                        latitude: item.latitude,
+                        longitude: item.longitude,
+
+                        rate: item.rate,
+                        serviceNotes: item.serviceNotes || '',
+                        serviceDate: item.serviceDate,
+                        status: item.status,
+
+                        addressLine1: item.addressLine1 || '',
+                        addressLine2: item.addressLine2 || '',
+                        city: item.city || '',
+                        state: item.state || '',
+                        postalCode: item.postalCode || '',
+                    });
+
+                }}
                 style={[
                     styles.scheduleCard,
                     {
@@ -1635,15 +1731,20 @@ const DashboardScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.scheduleCardTitleContainer}>
                         <Text style={[styles.scheduleCardTitle, { color: cardStyle.titleColor }]}>
-                            {item.title}
+                            {item.serviceName}
                         </Text>
                         <View style={[styles.scheduleCardStatus, { backgroundColor: cardStyle.statusBg }]}>
-                            <View style={[styles.scheduleCardStatusDot, { backgroundColor: statusStyle.dot }]} />
-                            <Text style={[styles.scheduleCardStatusText, { color: cardStyle.statusText }]}>
-                                {isCompleted ? '✓ Done' :
-                                    isInProgress ? '⏳ In Progress' :
-                                        '📅 Upcoming'}
-                            </Text>
+
+                            <Image
+                                source={require('../../asset/time-outline.png')}
+                                style={{
+                                    width: 14,
+                                    height: 14,
+                                    tintColor: iconColors.time,
+
+                                }}
+                            />
+                            <Text style={styles.scheduleCardDetailText}>{item.time}</Text>
                         </View>
                     </View>
                 </View>
@@ -1660,12 +1761,14 @@ const DashboardScreen = ({ navigation }) => {
 
                             }}
                         />
-                        <Text style={styles.scheduleCardDetailText}>{item.client}</Text>
+                        <Text style={styles.scheduleCardDetailText}>{item.customerName}</Text>
                     </View>
+
+
                     <View style={styles.scheduleCardDetail}>
 
                         <Image
-                            source={require('../../asset/time-outline.png')}
+                            source={require('../../asset/hourglass-outline.png')}
                             style={{
                                 width: 14,
                                 height: 14,
@@ -1673,7 +1776,21 @@ const DashboardScreen = ({ navigation }) => {
 
                             }}
                         />
-                        <Text style={styles.scheduleCardDetailText}>{item.time}</Text>
+                        <Text style={styles.scheduleCardDetailText}>{item.hours}hrs</Text>
+                    </View>
+
+                    <View style={styles.scheduleCardDetail}>
+
+                        <Image
+                            source={require('../../asset/navigate-outline.png')}
+                            style={{
+                                width: 14,
+                                height: 14,
+                                tintColor: iconColors.location,
+
+                            }}
+                        />
+                        <Text style={styles.scheduleCardDetailText}>{item.distance}</Text>
                     </View>
                     <View style={styles.scheduleCardDetail}>
 
@@ -1686,22 +1803,27 @@ const DashboardScreen = ({ navigation }) => {
 
                             }}
                         />
-                        <Text style={styles.scheduleCardDetailText}>{item.location}</Text>
+                        <Text style={styles.scheduleCardDetailText}>{item.address}</Text>
                     </View>
-                    <View style={styles.scheduleCardDetail}>
 
-                        <Image
-                            source={require('../../asset/navigate-outline.png')}
-                            style={{
-                                width: 14,
-                                height: 14,
-                                tintColor: iconColors.distance,
+                </View>
 
-                            }}
-                        />
-                        <Text style={styles.scheduleCardDetailText}>{item.distance}</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                    <View
+                        style={styles.upcomingDeclineButton}
+                        activeOpacity={0.8}
+
+                    >
+                        <Text style={styles.upcomingDeclineText}>
+                            View Details
+                        </Text>
+
+
                     </View>
                 </View>
+
+
+
             </TouchableOpacity>
         );
     };
@@ -1824,11 +1946,11 @@ const DashboardScreen = ({ navigation }) => {
 
 
                     <TouchableOpacity
-                        style={styles.viewDetailsButton}
+                        style={styles.upcomingDeclineButton}
                         activeOpacity={0.8}
                         onPress={() => openTaskDetails(item)}
                     >
-                        <Text style={styles.viewDetailsButtonText}>
+                        <Text style={styles.upcomingDeclineText}>
                             View Details
                         </Text>
 
@@ -2746,7 +2868,7 @@ const DashboardScreen = ({ navigation }) => {
                                 </View>
                                 <FlatList
                                     data={availabilitySchedule}
-                                    keyExtractor={(item) => item.id.toString()}
+                                    keyExtractor={(item) => item.bookingNo.toString()}
                                     renderItem={({ item }) => (
                                         <View style={styles.availabilitySummaryItem}>
                                             <View style={styles.availabilitySummaryItemLeft}>
@@ -2899,7 +3021,7 @@ const DashboardScreen = ({ navigation }) => {
                                 </View>
                                 <FlatList
                                     data={displayedSchedule}
-                                    keyExtractor={(item) => item.id.toString()}
+                                    keyExtractor={(item) => item.bookingNo.toString()}
                                     renderItem={renderScheduleItem}
                                     scrollEnabled={false}
                                 />
@@ -4852,11 +4974,11 @@ const styles = StyleSheet.create({
     },
 
     viewDetailsButton: {
-        backgroundColor: '#ac6f25',
+        backgroundColor: '#ff9f29',
         paddingHorizontal: 14,
         paddingVertical: 6,
         borderRadius: 8,
-        shadowColor: '#ac6f25',
+        shadowColor: '#f38d10',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 4,

@@ -259,11 +259,9 @@ const ScheduleScreen = ({ navigation }) => {
                         .filter(Boolean)
                         .join(', '),
 
-                    status: getScheduleStatus(
-                        item.serviceDate,
-                        item.startTime,
-                        item.endTime
-                    ),
+                    status: item.serviceStatus,
+                       
+                    
 
                     amount:
                         item.rate !== undefined &&
