@@ -234,7 +234,7 @@ const SignupScreen = ({ navigation, route }) => {
         try {
             setLoadingServices(true);
 
-            const token = await AsyncStorage.getItem('token');
+            
 
             const response = await axios.get(
                 API.SERVICE_CATEGORY_DROPDOWN,
@@ -2645,6 +2645,7 @@ const SignupScreen = ({ navigation, route }) => {
                 );
                 return false;
             }
+            setShowUploadModal(false);
 
             setUploadingDocument(docId);
             setUploadProgress(0);

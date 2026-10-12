@@ -79,6 +79,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                 ? [params.serviceNotes]
                 : [],
     };
+    console.log('assimnetID',jobDetails.assignmentId)
     const [currentStatus, setCurrentStatus] = useState('upcoming');
     const [showOTPModal, setShowOTPModal] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '']);

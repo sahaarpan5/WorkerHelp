@@ -2154,6 +2154,36 @@ const DashboardScreen = ({ navigation }) => {
                                     Schedule
                                 </Text>
 
+
+                                  <View style={[styles.taskDetailsTimeCard,{marginBottom:5}]}>
+
+                                    <View style={styles.taskTimeItem}>
+
+                                        <View style={styles.taskTimeIconBox}>
+                                            <Image
+                                                source={require('../../asset/time-outline.png')}
+                                                style={styles.taskTimeIcon}
+                                            />
+                                        </View>
+
+                                        <View>
+                                            <Text style={styles.taskDetailLabel}>
+                                                Date
+                                            </Text>
+
+                                            <Text style={styles.taskTimeValue}>
+                                                {task.date}
+                                            </Text>
+                                        </View>
+
+                                    </View>
+
+                                   
+
+                                   
+
+                                </View>
+
                                 <View style={styles.taskDetailsTimeCard}>
 
                                     <View style={styles.taskTimeItem}>
