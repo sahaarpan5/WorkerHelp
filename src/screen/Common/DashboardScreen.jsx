@@ -233,6 +233,7 @@ const DashboardScreen = ({ navigation }) => {
             setSelectedUpcomingTask(null);
             setLatestTaskSeconds(0);
             setLatestTaskProgress(0);
+            fetchTodaySchedule(location);
 
             Alert.alert(
                 'Success',
@@ -680,6 +681,9 @@ const DashboardScreen = ({ navigation }) => {
                     const startTime = item.startTime || '';
                     const endTime = item.endTime || '';
 
+                    const showstartTime = formatTime(item.startTime);
+                    const showendTime = formatTime(item.endTime);
+
                     // Calculate duration in hours
                     let hours = 0;
 
@@ -715,12 +719,14 @@ const DashboardScreen = ({ navigation }) => {
 
                     return {
                         ...item,
-                        id: item.assignmentId,
+                        id: item.bookingDetailId,
                         assignmentId: item.assignmentId,
                         bookingNo: item.bookingNo || '',
                         serviceName: item.serviceName || 'Service',
+                        serviceStatus: item.serviceStatus || 'Upcoming',
                         customerName: item.customerName || 'Customer',
                         customerPhone: item.customerPhone || '',
+                        customerId: item.customerId || '',
                         rate: Number(item.rate) || 0,
                         icon: getServiceIcon(),
 
@@ -734,7 +740,9 @@ const DashboardScreen = ({ navigation }) => {
                             .filter(Boolean)
                             .join(', '),
 
-                        time: `${startTime.slice(0, 5) || '--:--'} - ${endTime.slice(0, 5) || '--:--'
+
+
+                        time: `${showstartTime || '--:--'} - ${showendTime || '--:--'
                             }`,
 
                         hours,
@@ -1671,38 +1679,44 @@ const DashboardScreen = ({ navigation }) => {
         return (
             <TouchableOpacity
                 onPress={() => {
-                    navigation.navigate('JobDetailsScreen', {
+                    const navigationParams = {
                         id: item.id,
                         assignmentId: item.assignmentId,
                         bookingNo: item.bookingNo,
-
                         serviceName: item.serviceName,
                         customerName: item.customerName,
                         customerPhone: item.customerPhone,
-
                         time: item.time,
                         startTime: item.startTime,
                         endTime: item.endTime,
                         hours: item.hours,
-
+                        duration: item.duration,
                         distance: item.distance,
-                        address: item.address,
-
+                        location: item.location,
+                        addressLine1: item.addressLine1,
+                        addressLine2: item.addressLine2,
+                        city: item.city,
+                        state: item.state,
+                        postalCode: item.postalCode,
                         latitude: item.latitude,
                         longitude: item.longitude,
-
                         rate: item.rate,
-                        serviceNotes: item.serviceNotes || '',
+                        serviceNotes: item.serviceNotes,
                         serviceDate: item.serviceDate,
                         status: item.status,
+                        serviceStatus: item.serviceStatus,
+                        customerId:item.customerId,
+                    };
 
-                        addressLine1: item.addressLine1 || '',
-                        addressLine2: item.addressLine2 || '',
-                        city: item.city || '',
-                        state: item.state || '',
-                        postalCode: item.postalCode || '',
-                    });
-
+                    if (
+                        String(item.serviceStatus || '').trim().toLowerCase() ===
+                        'completed'
+                    ) {
+                        navigation.navigate('JobCompletionScreen', navigationParams);
+                    } else {
+                        // Preserve existing navigation logic
+                        navigation.navigate('JobDetailsScreen', navigationParams);
+                    }
                 }}
                 style={[
                     styles.scheduleCard,
@@ -1719,11 +1733,11 @@ const DashboardScreen = ({ navigation }) => {
                 {/* Left Border Accent */}
                 <View style={[styles.scheduleCardAccent, { backgroundColor: cardStyle.leftBorderColor }]} />
 
-                {isInProgress && (
-                    <View style={[styles.inProgressBadge, { backgroundColor: cardStyle.iconBg }]}>
-                        <Text style={styles.inProgressBadgeText}>● LIVE</Text>
-                    </View>
-                )}
+
+                <View style={[styles.inProgressBadge, { backgroundColor: cardStyle.iconBg }]}>
+                    <Text style={styles.inProgressBadgeText}>{item.serviceStatus}</Text>
+                </View>
+
 
                 <View style={styles.scheduleCardHeader}>
                     <View style={[styles.scheduleCardIcon, { backgroundColor: cardStyle.iconBg + '15', borderColor: cardStyle.iconBg }]}>
@@ -2155,7 +2169,7 @@ const DashboardScreen = ({ navigation }) => {
                                 </Text>
 
 
-                                  <View style={[styles.taskDetailsTimeCard,{marginBottom:5}]}>
+                                <View style={[styles.taskDetailsTimeCard, { marginBottom: 5 }]}>
 
                                     <View style={styles.taskTimeItem}>
 
@@ -2178,9 +2192,9 @@ const DashboardScreen = ({ navigation }) => {
 
                                     </View>
 
-                                   
 
-                                   
+
+
 
                                 </View>
 

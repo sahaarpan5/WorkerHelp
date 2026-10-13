@@ -19,21 +19,38 @@ import {
     Linking,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import API from '../../util/API';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 const { width, height } = Dimensions.get('window');
 
 const JobDetailsScreen = ({ navigation, route }) => {
-
+    const [isStartingService, setIsStartingService] = useState(false);
     const params = route?.params || {};
     const jobDetails = {
-        id: params.id ?? params.assignmentId ?? '',
+        id: params.id,
+        startTime:params.startTime,
+        serviceName:params.serviceName,
+        endTime:params.endTime,
+        hours:params.hours,
+        customerId: params.customerId,
+        serviceStatus: params.serviceStatus,
         assignmentId: params.assignmentId ?? params.id ?? '',
         bookingNo: params.bookingNo ?? '',
         jobType: params.serviceName ?? params.title ?? 'Home Service',
         customerName: params.customerName ?? 'Customer',
         customerRating: params.customerRating ?? null,
         customerPhone: params.customerPhone ?? '',
+        serviceDate:params.serviceDate,
+        postalCode:params.postalCode,
+        latitude:params.latitude,
+        longitude:params.longitude,
+        addressLine1:params.addressLine1,
+        addressLine2:params.addressLine2,
+        city:params.city,
+        state:params.state,
+        rate:params.rate,
         location:
             params.address ??
             [
@@ -79,7 +96,10 @@ const JobDetailsScreen = ({ navigation, route }) => {
                 ? [params.serviceNotes]
                 : [],
     };
-    console.log('assimnetID',jobDetails.assignmentId)
+    console.log('assimnetID', jobDetails.id)
+    console.log('customerId', jobDetails.customerId)
+    console.log('serviceStatus', jobDetails.serviceStatus)
+    console.log('bookingNo', jobDetails.bookingNo)
     const [currentStatus, setCurrentStatus] = useState('upcoming');
     const [showOTPModal, setShowOTPModal] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '']);
@@ -99,6 +119,8 @@ const JobDetailsScreen = ({ navigation, route }) => {
     const scrollY = useRef(new Animated.Value(0)).current;
     const headerOpacity = useRef(new Animated.Value(1)).current;
     const headerTranslateY = useRef(new Animated.Value(0)).current;
+    const [isVerifyingOTP, setIsVerifyingOTP] = useState(false);
+    const [isEndingService, setIsEndingService] = useState(false);
 
     const otpRefs = useRef([]);
     const endOtpRefs = useRef([]);
@@ -233,27 +255,222 @@ const JobDetailsScreen = ({ navigation, route }) => {
         }, 300);
     };
 
-    const handleOTPVerify = () => {
+
+
+    const handleOTPVerify = async () => {
         const otpValue = otp.join('');
-        if (otpValue.length < 4) {
-            Alert.alert('Invalid OTP', 'Please enter the complete OTP');
+
+        if (otpValue.length !== 4) {
+            Alert.alert('Invalid OTP', 'Please enter the complete OTP.');
             return;
         }
-        Alert.alert('Verified', 'OTP verified successfully! You can now start the service.');
-        setShowOTPModal(false);
-        setOtp(['', '', '', '']);
-        setCurrentStatus('in-progress');
+
+        if (isVerifyingOTP) return;
+
+        try {
+            setIsVerifyingOTP(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            // Pass these values through navigation or obtain them
+            // from your partner profile / customer booking data.
+            const partnerId = jobDetails.id;
+            const customerId = jobDetails.customerId;
+
+            if (!token) {
+                Alert.alert('Session Expired', 'Please log in again.');
+                return;
+            }
+
+            if (!partnerId || !customerId) {
+                Alert.alert(
+                    'Missing Information',
+                    'Partner ID or Customer ID is unavailable.'
+                );
+                return;
+            }
+
+            const response = await fetch(
+                API.START_SERVICE(partnerId, customerId),
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        otp: otpValue,
+                    }),
+                }
+            );
+
+            const responseText = await response.text();
+
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                result = { message: responseText };
+            }
+
+            if (!response.ok) {
+                Alert.alert(
+                    'OTP Verification Failed',
+                    result?.message ||
+                    result?.title ||
+                    'Unable to start the service. Please try again.'
+                );
+                return;
+            }
+
+            Alert.alert(
+                'Verified',
+                result?.message || 'Service started.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            setShowOTPModal(false);
+                            setOtp(['', '', '', '']);
+                            setCurrentStatus('in-progress');
+                        },
+                    },
+                ]
+            );
+        } catch (error) {
+            console.error('Start Service API error:', error);
+
+            Alert.alert(
+                'Network Error',
+                'Unable to verify OTP. Please try again.'
+            );
+        } finally {
+            setIsVerifyingOTP(false);
+        }
     };
 
-    const handleEndServiceOTP = () => {
+    const handleEndServiceOTP = async () => {
         const otpValue = endServiceOTP.join('');
         if (otpValue.length < 4) {
             Alert.alert('Invalid OTP', 'Please enter the complete OTP');
             return;
         }
-        setShowEndServiceModal(false);
-        setEndServiceOTP(['', '', '', '']);
-        setShowServicesModal(true);
+
+
+
+        try {
+            setIsVerifyingOTP(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            // Pass these values through navigation or obtain them
+            // from your partner profile / customer booking data.
+            const partnerId = jobDetails.id;
+            const customerId = jobDetails.customerId;
+
+            if (!token) {
+                Alert.alert('Session Expired', 'Please log in again.');
+                return;
+            }
+
+            if (!partnerId || !customerId) {
+                Alert.alert(
+                    'Missing Information',
+                    'Partner ID or Customer ID is unavailable.'
+                );
+                return;
+            }
+
+            const response = await fetch(
+                API.END_SERVICE(partnerId, customerId),
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        otp: otpValue,
+                    }),
+                }
+            );
+
+            const responseText = await response.text();
+
+            let result = {};
+            try {
+                result = responseText ? JSON.parse(responseText) : {};
+            } catch {
+                result = { message: responseText };
+            }
+
+            if (!response.ok) {
+                Alert.alert(
+                    'OTP Verification Failed',
+                    result?.message ||
+                    result?.title ||
+                    'Unable to start the service. Please try again.'
+                );
+                return;
+            }
+
+            Alert.alert(
+                'Verified',
+                result?.message || 'Service started.',
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            setShowEndServiceModal(false);
+                            setEndServiceOTP(['', '', '', '']);
+
+
+                            const navigationParams = {
+                                id: jobDetails.id,
+                                assignmentId: jobDetails.assignmentId,
+                                bookingNo: jobDetails.bookingNo,
+                                serviceName: jobDetails.serviceName,
+                                customerName: jobDetails.customerName,
+                                customerPhone: jobDetails.customerPhone,
+                                time: jobDetails.time,
+                                startTime: jobDetails.startTime,
+                                endTime: jobDetails.endTime,
+                                hours: jobDetails.hours,
+                                duration: jobDetails.duration,
+                                distance: jobDetails.distance,
+                                location: jobDetails.location,
+                                addressLine1: jobDetails.addressLine1,
+                                addressLine2: jobDetails.addressLine2,
+                                city: jobDetails.city,
+                                state: jobDetails.state,
+                                postalCode: jobDetails.postalCode,
+                                latitude: jobDetails.latitude,
+                                longitude: jobDetails.longitude,
+                                rate: jobDetails.rate,
+                                serviceNotes: jobDetails.serviceNotes,
+                                serviceDate: jobDetails.serviceDate,
+                                status: jobDetails.status,
+                                serviceStatus: jobDetails.serviceStatus,
+                            };
+                            navigation.replace('JobCompletionScreen',navigationParams);
+                            setCurrentStatus('completed');
+                        },
+                    },
+                ]
+            );
+        } catch (error) {
+            console.error('Start Service API error:', error);
+
+            Alert.alert(
+                'Network Error',
+                'Unable to verify OTP. Please try again.'
+            );
+        } finally {
+            setIsVerifyingOTP(false);
+        }
+
     };
 
     const handleServiceComplete = () => {
@@ -275,12 +492,112 @@ const JobDetailsScreen = ({ navigation, route }) => {
         simulateUploadProgress();
     };
 
-    const handleStartService = () => {
-        setShowOTPModal(true);
+    const handleStartService = async () => {
+        if (isStartingService) return;
+
+        try {
+            setIsStartingService(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert('Error', 'Please log in again.');
+                return;
+            }
+
+            // Replace this with the actual source of the dynamic ID.
+            const partnerId = jobDetails.id;
+
+            if (!partnerId) {
+                Alert.alert('Error', 'Partner ID is missing.');
+                return;
+            }
+
+            const response = await fetch(
+                API.START_SERVICE_OTP(partnerId),
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            console.log("Start Service reposne", response);
+
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                Alert.alert(
+                    'Error',
+                    errorText || 'Unable to generate Start Service OTP.'
+                );
+                return;
+            }
+
+            setOtp(['', '', '', '']);
+            setShowOTPModal(true);
+
+        } catch (error) {
+            console.error('Start Service OTP error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setIsStartingService(false);
+        }
     };
 
-    const handleEndTask = () => {
-        setShowEndServiceModal(true);
+    const handleEndTask = async () => {
+        if (isEndingService) return;
+
+        try {
+            setIsEndingService(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert('Error', 'Please log in again.');
+                return;
+            }
+
+            // Replace this with the actual source of the dynamic ID.
+            const partnerId = jobDetails.id;
+
+            if (!partnerId) {
+                Alert.alert('Error', 'Partner ID is missing.');
+                return;
+            }
+
+            const response = await fetch(
+                API.END_SERVICE_OTP(partnerId),
+                {
+                    method: 'POST',
+                    headers: {
+                        Accept: '*/*',
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+            console.log("Start Service reposne", response);
+
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                Alert.alert(
+                    'Error',
+                    errorText || 'Unable to generate Start Service OTP.'
+                );
+                return;
+            }
+
+            setOtp(['', '', '', '']);
+            setShowEndServiceModal(true);
+
+        } catch (error) {
+            console.error('Start Service OTP error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setIsEndingService(false);
+        }
     };
 
     const getStatusColor = () => {
@@ -332,37 +649,58 @@ const JobDetailsScreen = ({ navigation, route }) => {
     };
 
     const renderActionButton = () => {
-        if (currentStatus === 'in-progress') {
+        if (jobDetails.serviceStatus === 'InProgress' || currentStatus === 'in-progress') {
             return (
                 <TouchableOpacity style={[styles.primaryButton, { backgroundColor: ORANGE_COLOR }]} onPress={handleEndTask}>
 
-                    <Image
-                        source={require('../../asset/check-mark.png')}
-                        style={{
-                            width: 22,
-                            height: 22,
-                            tintColor: "#FFFFFF",
+                    {isEndingService ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                        <Image
+                            source={require('../../asset/check-mark.png')}
+                            style={{
+                                width: 22,
+                                height: 22,
+                                tintColor: '#FFFFFF',
+                            }}
+                        />
+                    )}
 
-                        }}
-                    />
-                    <Text style={styles.primaryButtonText}>End Task</Text>
+                    <Text style={styles.primaryButtonText}>
+                        {isEndingService ? 'Requesting OTP...' : 'End Task'}
+                    </Text>
                 </TouchableOpacity>
             );
-        } else if (currentStatus === 'upcoming') {
+        } else if (jobDetails.serviceStatus === 'Upcoming' || currentStatus === 'upcoming') {
             return (
 
-                <TouchableOpacity style={[styles.primaryButton, { backgroundColor: ORANGE_COLOR }]} onPress={handleStartService}>
+                <TouchableOpacity
+                    style={[
+                        styles.primaryButton,
+                        {
+                            backgroundColor: ORANGE_COLOR,
+                            opacity: isStartingService ? 0.7 : 1,
+                        },
+                    ]}
+                    onPress={handleStartService}
+                    disabled={isStartingService}
+                >
+                    {isStartingService ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                    ) : (
+                        <Image
+                            source={require('../../asset/play-circle-outline.png')}
+                            style={{
+                                width: 22,
+                                height: 22,
+                                tintColor: '#FFFFFF',
+                            }}
+                        />
+                    )}
 
-                    <Image
-                        source={require('../../asset/play-circle-outline.png')}
-                        style={{
-                            width: 22,
-                            height: 22,
-                            tintColor: "#FFFFFF",
-
-                        }}
-                    />
-                    <Text style={styles.primaryButtonText}>Start Service</Text>
+                    <Text style={styles.primaryButtonText}>
+                        {isStartingService ? 'Requesting OTP...' : 'Start Task'}
+                    </Text>
                 </TouchableOpacity>
 
 
@@ -453,7 +791,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                         <Text style={styles.toolbarTitle}>{jobDetails.jobType}</Text>
                         <View style={styles.toolbarStatus}>
                             <View style={[styles.toolbarStatusDot, { backgroundColor: '#FFFFFF' }]} />
-                            <Text style={styles.toolbarStatusText}>{getStatusLabel()}</Text>
+                            <Text style={styles.toolbarStatusText}>{jobDetails.serviceStatus}</Text>
                         </View>
                     </View>
                     <TouchableOpacity style={styles.toolbarShare}>
@@ -719,7 +1057,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                 </View>
 
                 {/* Professional Job Tasks */}
-               
+
 
                 {/* Action Button */}
                 {renderActionButton()}
@@ -771,7 +1109,11 @@ const JobDetailsScreen = ({ navigation, route }) => {
                             ))}
                         </View>
                         <TouchableOpacity style={styles.modalButton} onPress={handleOTPVerify}>
-                            <Text style={styles.modalButtonText}>Verify & Start</Text>
+                            {isVerifyingOTP ? (
+                                <ActivityIndicator color="#FFFFFF" />
+                            ) : (
+                                <Text style={styles.modalButtonText}>Verify & Start</Text>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -819,7 +1161,13 @@ const JobDetailsScreen = ({ navigation, route }) => {
                             ))}
                         </View>
                         <TouchableOpacity style={styles.modalButton} onPress={handleEndServiceOTP}>
-                            <Text style={styles.modalButtonText}>Verify & End</Text>
+
+                            {isVerifyingOTP ? (
+                                <ActivityIndicator color="#FFFFFF" />
+                            ) : (
+                                <Text style={styles.modalButtonText}>Verify & End</Text>
+                            )}
+
                         </TouchableOpacity>
                     </View>
                 </View>

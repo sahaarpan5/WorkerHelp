@@ -23,6 +23,18 @@ const API = {
 
    PARTNER_ACCEPTED_BOOKING_ASSIGNMENTS:
     `${BASE_URL}/Partner/booking/assignments?status=Accepted`,
+
+    START_SERVICE_OTP: (partnerId) =>
+    `${BASE_URL}/Partner/${partnerId}/start-otp`,
+
+    START_SERVICE: (partnerId, customerId) =>
+    `${BASE_URL}/Partner/${partnerId}/start?customerId=${encodeURIComponent(customerId)}`,
+
+    END_SERVICE_OTP: (partnerId) =>
+    `${BASE_URL}/Partner/${partnerId}/end-otp`,
+
+    END_SERVICE: (partnerId, customerId) =>
+    `${BASE_URL}/Partner/${partnerId}/complete?customerId=${encodeURIComponent(customerId)}`,
 };
 
 // Add more endpoints here as needed

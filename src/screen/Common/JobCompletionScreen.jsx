@@ -20,7 +20,32 @@ import {
 
 const { width, height } = Dimensions.get('window');
 
-const JobCompletionScreen = ({ navigation }) => {
+const JobCompletionScreen = ({ navigation,route  }) => {
+
+     const routeParams = route?.params || {};
+     const formatDisplay = (value, fallback = 'N/A') => {
+        if (
+            value === null ||
+            value === undefined ||
+            String(value).trim() === ''
+        ) {
+            return fallback;
+        }
+
+        return String(value);
+    };
+
+    const fullAddress = [
+        routeParams.addressLine1,
+        routeParams.addressLine2,
+        routeParams.city,
+        routeParams.state,
+        routeParams.postalCode,
+    ]
+        .filter(value => value && String(value).trim())
+        .join(', ');
+
+    const serviceRate = Number(routeParams.rate) || 0;
     const [cashReceived, setCashReceived] = useState(false);
     const [paymentMode, setPaymentMode] = useState('online');
     const [isOnline, setIsOnline] = useState(true);
@@ -48,78 +73,108 @@ const JobCompletionScreen = ({ navigation }) => {
     const ORANGE_COLOR = '#FF8C00';
 
     // Job completion data
-    const jobData = {
-        jobId: 'HH-2026-0789',
-        bookingId: 'BK-2026-4567',
-        service: 'Plumbing Repair',
-        category: 'Home Services',
-        customer: 'Mr. Rajesh Sharma',
-        customerPhone: '+91 98765 43210',
-        address: 'Andheri East, Mumbai - 400093',
-        date: '06 Jul 2026',
-        startTime: '9:00 AM',
-        endTime: '11:30 AM',
-        duration: '2.5 hrs',
-        serviceCharges: 1200,
-        gst: 216,
-        platformFee: 84,
-        netEarnings: 1500,
-        walletBalance: 16850,
-        customerRating: 4.8,
-        customerFeedback: 'Excellent work! Very professional and quick service. Fixed all issues perfectly.',
-        customerFeedbackSubmitted: true,
-        checklist: {
-            otpVerified: true,
-            serviceCompleted: true,
-            photosUploaded: true,
-            paymentConfirmed: true,
-        },
-        timeline: [
-            {
-                id: 1,
-                event: 'Started Service',
-                time: '9:00 AM',
-                completed: true,
-                image: require('../../asset/play-circle-outline.png'),
-            },
-            {
-                id: 2,
-                event: 'Work Completed',
-                time: '11:15 AM',
-                completed: true,
-                image: require('../../asset/checked.png'),
-            },
-            {
-                id: 3,
-                event: 'OTP Verified',
-                time: '11:20 AM',
-                completed: true,
-                image: require('../../asset/shield.png'),
-            },
-            {
-                id: 4,
-                event: 'Job Closed',
-                time: '11:30 AM',
-                completed: true,
-                image: require('../../asset/flag.png'),
-            },
-        ],
-        nextJob: {
+   const jobData = {
+    jobId: formatDisplay(
+        routeParams.assignmentId ||
+        routeParams.id ||
+        routeParams.bookingNo
+    ),
+
+    bookingId: formatDisplay(
+        routeParams.bookingId || routeParams.bookingNo
+    ),
+
+    service: formatDisplay(
+        routeParams.serviceName || routeParams.title
+    ),
+
+    category: formatDisplay(routeParams.category),
+
+    customer: formatDisplay(
+        routeParams.customerName || routeParams.customer
+    ),
+
+    customerPhone: routeParams.customerPhone || '',
+
+    address: formatDisplay(
+        routeParams.address || fullAddress
+    ),
+
+    date: formatDisplay(
+        routeParams.serviceDate || routeParams.date
+    ),
+
+    startTime: formatDisplay(
+        routeParams.startTime || routeParams.time
+    ),
+
+    endTime: formatDisplay(routeParams.endTime),
+
+    duration: formatDisplay(
+        routeParams.duration || routeParams.hours
+    ),
+
+    serviceCharges: serviceRate,
+    gst: 0,
+    platformFee: 0,
+    netEarnings: serviceRate,
+
+    walletBalance: null,
+    customerRating: 0,
+    customerFeedback: '',
+    customerFeedbackSubmitted: false,
+
+    checklist: {
+        otpVerified: true,
+        serviceCompleted: true,
+        photosUploaded:true,
+        paymentConfirmed: true,
+    },
+
+    timeline: [
+        {
             id: 1,
-            title: 'Electrical Work',
-            time: '2:00 PM',
-            client: 'Mrs. Patel',
-            clientPhone: '+91 98765 43220',
-            location: 'Bandra West',
-            distance: '4.8 km',
-            amount: '₹850',
-            status: 'Upcoming',
+            event: 'Started Service',
+            time: formatDisplay(
+                routeParams.startTime || routeParams.time,
+                '--'
+            ),
+            completed: Boolean(
+                routeParams.startTime || routeParams.time
+            ),
+            image: require('../../asset/play-circle-outline.png'),
         },
-        achievements: {
-            count: 342,
-            message: 'Excellent Performance',
+        {
+            id: 2,
+            event: 'Work Completed',
+            time: formatDisplay(routeParams.endTime, '--'),
+            completed: true,
+            image: require('../../asset/checked.png'),
         },
-    };
+        // {
+        //     id: 3,
+        //     event: 'OTP Verified',
+        //     time: '--',
+        //     completed: Boolean(routeParams.otpVerified),
+        //     image: require('../../asset/shield.png'),
+        //     completed: true,
+        // },
+        {
+            id: 4,
+            event: 'Job Closed',
+            time: formatDisplay(routeParams.endTime, '--'),
+            completed: true,
+            image: require('../../asset/flag.png'),
+        },
+    ],
+
+    nextJob: null,
+
+    achievements: {
+        count: null,
+        message: '',
+    },
+};
 
     useEffect(() => {
         Animated.parallel([
@@ -337,7 +392,7 @@ const JobCompletionScreen = ({ navigation }) => {
                         <Text style={styles.toolbarTitle}>Job Completed</Text>
                         <View style={styles.toolbarStatus}>
                             <View style={[styles.toolbarStatusDot, { backgroundColor: '#FFFFFF' }]} />
-                            <Text style={styles.toolbarStatusText}>#HH-2026-0789</Text>
+                            <Text style={styles.toolbarStatusText}> #{jobData.bookingId}</Text>
                         </View>
                     </View>
                     <TouchableOpacity style={styles.toolbarShare}>
@@ -454,10 +509,7 @@ const JobCompletionScreen = ({ navigation }) => {
                     <Text style={styles.cardTitle}>Service Summary</Text>
 
                     <View style={styles.summaryGrid}>
-                        <View style={styles.summaryItem}>
-                            <Text style={styles.summaryLabel}>Job ID</Text>
-                            <Text style={styles.summaryValue}>{jobData.jobId}</Text>
-                        </View>
+                        
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryLabel}>Booking ID</Text>
                             <Text style={styles.summaryValue}>{jobData.bookingId}</Text>
@@ -469,10 +521,7 @@ const JobCompletionScreen = ({ navigation }) => {
                             <Text style={styles.summaryLabel}>Service</Text>
                             <Text style={styles.summaryValue}>{jobData.service}</Text>
                         </View>
-                        <View style={styles.summaryItem}>
-                            <Text style={styles.summaryLabel}>Category</Text>
-                            <Text style={styles.summaryValue}>{jobData.category}</Text>
-                        </View>
+                        
                     </View>
 
                     <View style={styles.summaryGrid}>
@@ -624,18 +673,12 @@ const JobCompletionScreen = ({ navigation }) => {
                         <Text style={styles.paymentLabel}>Service Charges</Text>
                         <Text style={styles.paymentValue}>₹{jobData.serviceCharges}</Text>
                     </View>
-                    <View style={styles.paymentRow}>
-                        <Text style={styles.paymentLabel}>GST (18%)</Text>
-                        <Text style={styles.paymentValue}>₹{jobData.gst}</Text>
-                    </View>
-                    <View style={styles.paymentRow}>
-                        <Text style={styles.paymentLabel}>Platform Fee</Text>
-                        <Text style={styles.paymentValue}>₹{jobData.platformFee}</Text>
-                    </View>
-                    <View style={[styles.paymentRow, styles.paymentTotal]}>
-                        <Text style={styles.paymentTotalLabel}>Net Earnings</Text>
+                   
+                   
+                    {/* <View style={[styles.paymentRow, styles.paymentTotal]}>
+                        <Text style={styles.paymentTotalLabel}>Total</Text>
                         <Text style={styles.paymentTotalValue}>₹{jobData.netEarnings}</Text>
-                    </View>
+                    </View> */}
 
                     <View style={styles.paymentModeDisplay}>
                         <View style={[styles.paymentModeBadge, paymentMode === 'online' ? styles.paymentModeOnline : styles.paymentModeCash]}>
@@ -653,53 +696,12 @@ const JobCompletionScreen = ({ navigation }) => {
                                 }}
                             />
                             <Text style={styles.paymentModeBadgeText}>
-                                {paymentMode === 'online' ? 'Online Payment' : 'Cash Payment'}
+                               Online Payment' 
                             </Text>
                         </View>
                     </View>
 
-                    {paymentMode === 'online' ? (
-                        <View style={styles.walletInfo}>
-
-                            <Image
-                                source={require('../../asset/wallet.png')}
-                                style={{
-                                    width: 20,
-                                    height: 20,
-                                    tintColor: "#4CAF50",
-
-                                }}
-                            />
-                            <Text style={styles.walletInfoText}>
-                                Credited to Wallet • Balance: ₹{jobData.walletBalance.toLocaleString()}
-                            </Text>
-                        </View>
-                    ) : (
-                        <TouchableOpacity
-                            style={[styles.cashReceivedButton, cashReceived && styles.cashReceivedButtonActive]}
-                            onPress={() => {
-                                setCashReceived(!cashReceived);
-                                if (!cashReceived) {
-                                    Alert.alert('Success', 'Cash payment confirmed!');
-                                }
-                            }}
-                        >
-                            <View style={[styles.checkbox, cashReceived && styles.checkboxActive]}>
-                                {cashReceived && <Image
-                                    source={require('../../asset/checked.png')}
-                                    style={{
-                                        width: 16,
-                                        height: 16,
-                                        tintColor: "#ffffff",
-
-                                    }}
-                                />}
-                            </View>
-                            <Text style={[styles.cashReceivedText, cashReceived && styles.cashReceivedTextActive]}>
-                                {cashReceived ? '✓ Cash Received' : 'Confirm Cash Received'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
+                  
                 </Animated.View>
 
                 {/* Customer Feedback from Customer */}
