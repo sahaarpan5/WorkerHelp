@@ -21,6 +21,7 @@ import {
 import MapView, { Marker } from 'react-native-maps';
 import API from '../../util/API';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { launchCamera } from 'react-native-image-picker';
 
 
 const { width, height } = Dimensions.get('window');
@@ -30,10 +31,11 @@ const JobDetailsScreen = ({ navigation, route }) => {
     const params = route?.params || {};
     const jobDetails = {
         id: params.id,
-        startTime:params.startTime,
-        serviceName:params.serviceName,
-        endTime:params.endTime,
-        hours:params.hours,
+        bookingDetailId: params.bookingDetailId,
+        startTime: params.startTime,
+        serviceName: params.serviceName,
+        endTime: params.endTime,
+        hours: params.hours,
         customerId: params.customerId,
         serviceStatus: params.serviceStatus,
         assignmentId: params.assignmentId ?? params.id ?? '',
@@ -42,15 +44,15 @@ const JobDetailsScreen = ({ navigation, route }) => {
         customerName: params.customerName ?? 'Customer',
         customerRating: params.customerRating ?? null,
         customerPhone: params.customerPhone ?? '',
-        serviceDate:params.serviceDate,
-        postalCode:params.postalCode,
-        latitude:params.latitude,
-        longitude:params.longitude,
-        addressLine1:params.addressLine1,
-        addressLine2:params.addressLine2,
-        city:params.city,
-        state:params.state,
-        rate:params.rate,
+        serviceDate: params.serviceDate,
+        postalCode: params.postalCode,
+        latitude: params.latitude,
+        longitude: params.longitude,
+        addressLine1: params.addressLine1,
+        addressLine2: params.addressLine2,
+        city: params.city,
+        state: params.state,
+        rate: params.rate,
         location:
             params.address ??
             [
@@ -100,15 +102,17 @@ const JobDetailsScreen = ({ navigation, route }) => {
     console.log('customerId', jobDetails.customerId)
     console.log('serviceStatus', jobDetails.serviceStatus)
     console.log('bookingNo', jobDetails.bookingNo)
+    console.log('bookingDetailId', jobDetails.bookingDetailId)
     const [currentStatus, setCurrentStatus] = useState('upcoming');
     const [showOTPModal, setShowOTPModal] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '']);
     const [showServicesModal, setShowServicesModal] = useState(false);
     const [selectedServices, setSelectedServices] = useState([]);
-    const [capturedImages, setCapturedImages] = useState({});
+    const [capturedImages, setCapturedImages] = useState([]);
     const [showEndServiceModal, setShowEndServiceModal] = useState(false);
     const [endServiceOTP, setEndServiceOTP] = useState(['', '', '', '']);
     const [uploadProgress, setUploadProgress] = useState(0);
+    const [isCompletingService, setIsCompletingService] = useState(false);
 
     // Animation values
     const statusPulseAnim = useRef(new Animated.Value(1)).current;
@@ -128,9 +132,13 @@ const JobDetailsScreen = ({ navigation, route }) => {
     // Dummy job data
 
 
-    const totalServices = jobDetails.subServices.length;
-    const completedServices = Object.keys(capturedImages).length;
-    const progressPercentage = Math.round((completedServices / totalServices) * 100);
+    const totalServices = 1;
+
+    const completedServices = capturedImages.filter(Boolean).length === 3 ? 1 : 0;
+
+    const progressPercentage = Math.round(
+        (completedServices / totalServices) * 100
+    );
 
     const ORANGE_COLOR = '#FF8C00';
     const CARD_COLOR = '#6A1B9A';
@@ -212,6 +220,42 @@ const JobDetailsScreen = ({ navigation, route }) => {
             scrollY.removeAllListeners();
         };
     }, []);
+
+
+    const handleCapturePress = async (imageIndex) => {
+        try {
+            const result = await launchCamera({
+                mediaType: 'photo',
+                cameraType: 'back',
+                quality: 0.8,
+                saveToPhotos: false,
+            });
+
+            if (result.didCancel) return;
+
+            if (result.errorCode) {
+                Alert.alert(
+                    'Camera Error',
+                    result.errorMessage || 'Unable to open camera.'
+                );
+                return;
+            }
+
+            const imageUri = result.assets?.[0]?.uri;
+
+            if (!imageUri) return;
+
+            setCapturedImages(prev => {
+                const updatedImages = [...prev];
+                updatedImages[imageIndex] = imageUri;
+                return updatedImages;
+            });
+
+        } catch (error) {
+            console.log('Camera error:', error);
+            Alert.alert('Error', 'Unable to capture image.');
+        }
+    };
 
     const openGoogleMaps = () => {
         const { latitude, longitude } = jobDetails.coordinates;
@@ -357,49 +401,183 @@ const JobDetailsScreen = ({ navigation, route }) => {
             return;
         }
 
+        setShowServicesModal(true);
 
+        const partnerId = jobDetails.id;
+        const customerId = jobDetails.customerId;
+        console.log('partnerId', partnerId);
+        console.log('customerId', customerId);
+        console.log('otpValue', otpValue);
+
+        // try {
+        //     setIsVerifyingOTP(true);
+
+        //     const token = await AsyncStorage.getItem('token');
+
+        //     // Pass these values through navigation or obtain them
+        //     // from your partner profile / customer booking data.
+
+
+        //     if (!token) {
+        //         Alert.alert('Session Expired', 'Please log in again.');
+        //         return;
+        //     }
+
+        //     if (!partnerId || !customerId) {
+        //         Alert.alert(
+        //             'Missing Information',
+        //             'Partner ID or Customer ID is unavailable.'
+        //         );
+        //         return;
+        //     }
+
+        //     const response = await fetch(
+        //         API.END_SERVICE(partnerId, customerId),
+        //         {
+        //             method: 'POST',
+        //             headers: {
+        //                 Accept: '*/*',
+        //                 Authorization: `Bearer ${token}`,
+        //                 'Content-Type': 'application/json',
+        //             },
+        //             body: JSON.stringify({
+        //                 otp: otpValue,
+        //             }),
+        //         }
+        //     );
+
+        //     const responseText = await response.text();
+
+        //     let result = {};
+        //     try {
+        //         result = responseText ? JSON.parse(responseText) : {};
+        //     } catch {
+        //         result = { message: responseText };
+        //     }
+
+        //     if (!response.ok) {
+        //         Alert.alert(
+        //             'OTP Verification Failed',
+        //             result?.message ||
+        //             result?.title ||
+        //             'Unable to start the service. Please try again.'
+        //         );
+        //         return;
+        //     }
+
+        //     Alert.alert(
+        //         'Verified',
+        //         result?.message || 'Service started.',
+        //         [
+        //             {
+        //                 text: 'OK',
+        //                 onPress: () => {
+        //                     setShowEndServiceModal(false);
+        //                     setEndServiceOTP(['', '', '', '']);
+
+
+        //                     // const navigationParams = {
+        //                     //     id: jobDetails.id,
+        //                     //     assignmentId: jobDetails.assignmentId,
+        //                     //     bookingNo: jobDetails.bookingNo,
+        //                     //     serviceName: jobDetails.serviceName,
+        //                     //     customerName: jobDetails.customerName,
+        //                     //     customerPhone: jobDetails.customerPhone,
+        //                     //     time: jobDetails.time,
+        //                     //     startTime: jobDetails.startTime,
+        //                     //     endTime: jobDetails.endTime,
+        //                     //     hours: jobDetails.hours,
+        //                     //     duration: jobDetails.duration,
+        //                     //     distance: jobDetails.distance,
+        //                     //     location: jobDetails.location,
+        //                     //     addressLine1: jobDetails.addressLine1,
+        //                     //     addressLine2: jobDetails.addressLine2,
+        //                     //     city: jobDetails.city,
+        //                     //     state: jobDetails.state,
+        //                     //     postalCode: jobDetails.postalCode,
+        //                     //     latitude: jobDetails.latitude,
+        //                     //     longitude: jobDetails.longitude,
+        //                     //     rate: jobDetails.rate,
+        //                     //     serviceNotes: jobDetails.serviceNotes,
+        //                     //     serviceDate: jobDetails.serviceDate,
+        //                     //     status: jobDetails.status,
+        //                     //     serviceStatus: jobDetails.serviceStatus,
+        //                     // };
+        //                     // navigation.replace('JobCompletionScreen',navigationParams);
+        //                     // setCurrentStatus('completed');
+        //                 },
+        //             },
+        //         ]
+        //     );
+        // } catch (error) {
+        //     console.error('Start Service API error:', error);
+
+        //     Alert.alert(
+        //         'Network Error',
+        //         'Unable to verify OTP. Please try again.'
+        //     );
+        // } finally {
+        //     setIsVerifyingOTP(false);
+        // }
+
+    };
+
+    const handleServiceComplete = async () => {
+        if (capturedImages.length !== 3 || capturedImages.some(image => !image)) {
+            Alert.alert('Required', 'Please capture all 3 service images.');
+            return;
+        }
+
+        const otpValue = endServiceOTP.join('');
+
+        if (otpValue.length !== 4) {
+            Alert.alert('Invalid OTP', 'Please enter a valid 4-digit OTP.');
+            return;
+        }
 
         try {
-            setIsVerifyingOTP(true);
+            setIsCompletingService(true);
 
             const token = await AsyncStorage.getItem('token');
 
-            // Pass these values through navigation or obtain them
-            // from your partner profile / customer booking data.
-            const partnerId = jobDetails.id;
-            const customerId = jobDetails.customerId;
-
             if (!token) {
-                Alert.alert('Session Expired', 'Please log in again.');
+                Alert.alert('Error', 'Authentication token not found.');
                 return;
             }
 
-            if (!partnerId || !customerId) {
-                Alert.alert(
-                    'Missing Information',
-                    'Partner ID or Customer ID is unavailable.'
-                );
-                return;
-            }
+            const formData = new FormData();
+
+            formData.append('Otp', otpValue);
+
+            capturedImages.forEach((imageUri, index) => {
+                const extension =
+                    imageUri.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+
+                const mimeType =
+                    extension === 'png' ? 'image/png' : 'image/jpeg';
+
+                formData.append('Images', {
+                    uri: imageUri,
+                    type: mimeType,
+                    name: `service_image_${index + 1}.${extension}`,
+                });
+            });
 
             const response = await fetch(
-                API.END_SERVICE(partnerId, customerId),
+                API.END_SERVICE(jobDetails.bookingDetailId, jobDetails.customerId),
                 {
                     method: 'POST',
                     headers: {
                         Accept: '*/*',
                         Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        otp: otpValue,
-                    }),
+                    body: formData,
                 }
             );
 
             const responseText = await response.text();
 
-            let result = {};
+            let result;
             try {
                 result = responseText ? JSON.parse(responseText) : {};
             } catch {
@@ -408,25 +586,24 @@ const JobDetailsScreen = ({ navigation, route }) => {
 
             if (!response.ok) {
                 Alert.alert(
-                    'OTP Verification Failed',
-                    result?.message ||
-                    result?.title ||
-                    'Unable to start the service. Please try again.'
+                    'Error',
+                    result.message || result.title || 'Unable to complete service.'
                 );
                 return;
             }
 
             Alert.alert(
-                'Verified',
-                result?.message || 'Service started.',
+                'Success',
+                result.message || 'Service completed successfully.',
                 [
                     {
                         text: 'OK',
                         onPress: () => {
-                            setShowEndServiceModal(false);
+                            setShowServicesModal(false);
+                            setCapturedImages([]);
                             setEndServiceOTP(['', '', '', '']);
 
-
+                            
                             const navigationParams = {
                                 id: jobDetails.id,
                                 assignmentId: jobDetails.assignmentId,
@@ -453,6 +630,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
                                 serviceDate: jobDetails.serviceDate,
                                 status: jobDetails.status,
                                 serviceStatus: jobDetails.serviceStatus,
+                                bookingDetailId: jobDetails.bookingDetailId,
                             };
                             navigation.replace('JobCompletionScreen',navigationParams);
                             setCurrentStatus('completed');
@@ -460,22 +638,13 @@ const JobDetailsScreen = ({ navigation, route }) => {
                     },
                 ]
             );
+
         } catch (error) {
-            console.error('Start Service API error:', error);
-
-            Alert.alert(
-                'Network Error',
-                'Unable to verify OTP. Please try again.'
-            );
+            console.log('Complete service error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
         } finally {
-            setIsVerifyingOTP(false);
+            setIsCompletingService(false);
         }
-
-    };
-
-    const handleServiceComplete = () => {
-        navigation.replace('JobCompletionScreen');
-        setCurrentStatus('completed');
     };
 
     const toggleService = (serviceId) => {
@@ -486,11 +655,7 @@ const JobDetailsScreen = ({ navigation, route }) => {
         }
     };
 
-    const handleCapturePress = (serviceId) => {
-        Alert.alert('Capture Image', 'Camera functionality will be available soon.');
-        setCapturedImages({ ...capturedImages, [serviceId]: 'captured' });
-        simulateUploadProgress();
-    };
+
 
     const handleStartService = async () => {
         if (isStartingService) return;
@@ -1173,6 +1338,9 @@ const JobDetailsScreen = ({ navigation, route }) => {
                 </View>
             </Modal>
 
+
+
+
             {/* Services Checklist Modal */}
             <Modal visible={showServicesModal} transparent animationType="slide">
                 <View style={styles.servicesModalOverlay}>
@@ -1206,45 +1374,85 @@ const JobDetailsScreen = ({ navigation, route }) => {
 
                         <Text style={styles.modalSubtitle}>Upload images for completed services</Text>
 
-                        <FlatList
-                            data={jobDetails.subServices}
-                            keyExtractor={(item) => item.id.toString()}
-                            renderItem={({ item }) => {
-                                const isCaptured = capturedImages[item.id];
-                                return (
-                                    <View style={styles.serviceItem}>
-                                        <View style={styles.serviceInfo}>
-                                            <Text style={styles.serviceIcon}>{item.icon}</Text>
-                                            <Text style={styles.serviceName}>{item.name}</Text>
-                                        </View>
 
-                                        <TouchableOpacity
-                                            style={[styles.captureButton, isCaptured && styles.captureButtonDone]}
-                                            onPress={() => handleCapturePress(item.id)}
-                                        >
-                                            <Image
-                                                source={
-                                                    isCaptured
-                                                        ? require('../../asset/check-mark.png')
-                                                        : require('../../asset/camera.png')
-                                                }
-                                                style={{
-                                                    width: 18,
-                                                    height: 18,
-                                                    tintColor: isCaptured ? '#4CAF50' : '#FF8C00', // Remove if your PNGs are already colored
-                                                    resizeMode: 'contain',
-                                                }}
-                                            />
-                                            <Text style={[styles.captureText, isCaptured && styles.captureTextDone]}>
-                                                {isCaptured ? 'Uploaded' : 'Upload'}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                );
-                            }}
-                            scrollEnabled={true}
-                            style={styles.servicesList}
-                        />
+
+                        <View style={styles.servicePhotoCard}>
+
+                            <Text style={styles.serviceName}>
+                                {jobDetails.jobType}
+                            </Text>
+
+                            <Text style={styles.photoCount}>
+                                {capturedImages.filter(Boolean).length}/3 photos captured
+                            </Text>
+
+                            <View style={styles.photoSlotsContainer}>
+                                {[0, 1, 2].map((index) => {
+                                    const imageUri = capturedImages[index];
+
+                                    return (
+                                        <View key={index} style={styles.photoSlot}>
+
+                                            {/* Camera */}
+                                            <TouchableOpacity
+                                                style={styles.cameraSlot}
+                                                onPress={() => handleCapturePress(index)}
+                                            >
+                                                {imageUri ? (
+                                                    <View style={{ width: '100%', height: '100%' }}>
+                                                        <Image
+                                                            source={{ uri: imageUri }}
+                                                            style={styles.capturedThumbnail}
+                                                        />
+
+                                                        <View style={styles.retakeOverlay}>
+                                                            <Image
+                                                                source={require('../../asset/camera.png')}
+                                                                style={styles.retakeIcon}
+                                                            />
+                                                            <Text style={styles.retakeText}>Retake</Text>
+                                                        </View>
+                                                    </View>
+                                                ) : (
+                                                    <>
+                                                        <Image
+                                                            source={require('../../asset/camera.png')}
+                                                            style={styles.cameraIcon}
+                                                        />
+                                                        <Text style={styles.cameraSlotText}>
+                                                            Camera {index + 1}
+                                                        </Text>
+                                                    </>
+                                                )}
+                                            </TouchableOpacity>
+
+                                            {/* Preview */}
+                                            <View style={styles.previewSlot}>
+                                                {imageUri ? (
+                                                    <Image
+                                                        source={{ uri: imageUri }}
+                                                        style={styles.previewImage}
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <Image
+                                                            source={require('../../asset/image-outline.png')}
+                                                            style={styles.previewPlaceholderIcon}
+                                                        />
+                                                        <Text style={styles.previewText}>
+                                                            Preview {index + 1}
+                                                        </Text>
+                                                    </>
+                                                )}
+                                            </View>
+
+                                        </View>
+                                    );
+                                })}
+                            </View>
+                        </View>
+
+
 
                         {uploadProgress > 0 && uploadProgress < 100 && (
                             <View style={styles.progressContainer}>
@@ -1301,8 +1509,26 @@ const JobDetailsScreen = ({ navigation, route }) => {
                             </View>
                         )}
 
-                        <TouchableOpacity style={styles.modalButton} onPress={handleServiceComplete}>
-                            <Text style={styles.modalButtonText}>Done - Complete Service</Text>
+                        <TouchableOpacity
+                            style={[
+                                styles.modalButton,
+                                { opacity: isCompletingService ? 0.7 : 1 }
+                            ]}
+                            onPress={handleServiceComplete}
+                            disabled={isCompletingService}
+                        >
+                            {isCompletingService ? (
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <ActivityIndicator color="#FFFFFF" />
+                                    <Text style={[styles.modalButtonText, { marginLeft: 10 }]}>
+                                        Completing Service...
+                                    </Text>
+                                </View>
+                            ) : (
+                                <Text style={styles.modalButtonText}>
+                                    Done - Complete Service
+                                </Text>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -1996,7 +2222,123 @@ const styles = StyleSheet.create({
     mapImage: {
         width: '100%',
         height: '100%',
-    }
+    },
+
+    servicePhotoCard: {
+        backgroundColor: '#FFFFFF',
+        padding: 12,
+        borderRadius: 12,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#EEEEEE',
+    },
+
+    photoCount: {
+        fontSize: 11,
+        color: '#888888',
+        marginTop: 3,
+    },
+
+    photoSlotsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 14,
+        gap: 8,
+    },
+
+    photoSlot: {
+        flex: 1,
+        alignItems: 'center',
+    },
+
+    cameraSlot: {
+        width: '100%',
+        height: 85,
+        backgroundColor: '#FFF4E6',
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: '#FFD8AD',
+        borderStyle: 'dashed',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+
+    cameraIcon: {
+        width: 25,
+        height: 25,
+        resizeMode: 'contain',
+        tintColor: '#FF8C00',
+    },
+
+    cameraSlotText: {
+        fontSize: 10,
+        color: '#FF8C00',
+        marginTop: 5,
+    },
+
+    capturedThumbnail: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+
+    previewSlot: {
+        width: '100%',
+        height: 75,
+        backgroundColor: '#F5F5F5',
+        borderRadius: 9,
+        marginTop: 8,
+        borderWidth: 1,
+        borderColor: '#E5E5E5',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+    },
+
+    previewImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+
+    previewPlaceholderIcon: {
+        width: 23,
+        height: 23,
+        resizeMode: 'contain',
+        tintColor: '#AAAAAA',
+    },
+
+    previewText: {
+        fontSize: 9,
+        color: '#999999',
+        marginTop: 3,
+    },
+    retakeOverlay: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 5,
+        gap: 4,
+    },
+
+    retakeIcon: {
+        width: 13,
+        height: 13,
+        tintColor: '#FFFFFF',
+    },
+
+    retakeText: {
+        fontSize: 10,
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+
 });
 
 export default JobDetailsScreen;

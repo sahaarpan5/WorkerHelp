@@ -1680,7 +1680,7 @@ const DashboardScreen = ({ navigation }) => {
             <TouchableOpacity
                 onPress={() => {
                     const navigationParams = {
-                        id: item.id,
+                        id: item.bookingDetailId,
                         assignmentId: item.assignmentId,
                         bookingNo: item.bookingNo,
                         serviceName: item.serviceName,
@@ -1706,6 +1706,7 @@ const DashboardScreen = ({ navigation }) => {
                         status: item.status,
                         serviceStatus: item.serviceStatus,
                         customerId:item.customerId,
+                        bookingDetailId :item.bookingDetailId,
                     };
 
                     if (

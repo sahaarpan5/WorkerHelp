@@ -15,15 +15,18 @@ import {
     Easing,
     TextInput,
     Linking,
+    ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import API from '../../util/API';
 
 
 const { width, height } = Dimensions.get('window');
 
-const JobCompletionScreen = ({ navigation,route  }) => {
+const JobCompletionScreen = ({ navigation, route }) => {
 
-     const routeParams = route?.params || {};
-     const formatDisplay = (value, fallback = 'N/A') => {
+    const routeParams = route?.params || {};
+    const formatDisplay = (value, fallback = 'N/A') => {
         if (
             value === null ||
             value === undefined ||
@@ -55,6 +58,7 @@ const JobCompletionScreen = ({ navigation,route  }) => {
     const [customerFeedback, setCustomerFeedback] = useState('');
     const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
     const [ratingSubmitted, setRatingSubmitted] = useState(false);
+    const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
     // Animation values
     const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -73,108 +77,108 @@ const JobCompletionScreen = ({ navigation,route  }) => {
     const ORANGE_COLOR = '#FF8C00';
 
     // Job completion data
-   const jobData = {
-    jobId: formatDisplay(
-        routeParams.assignmentId ||
-        routeParams.id ||
-        routeParams.bookingNo
-    ),
+    const jobData = {
+        jobId: formatDisplay(
+            routeParams.assignmentId ||
+            routeParams.id ||
+            routeParams.bookingNo
+        ),
 
-    bookingId: formatDisplay(
-        routeParams.bookingId || routeParams.bookingNo
-    ),
+        bookingId: formatDisplay(
+            routeParams.bookingId || routeParams.bookingNo
+        ),
 
-    service: formatDisplay(
-        routeParams.serviceName || routeParams.title
-    ),
+        service: formatDisplay(
+            routeParams.serviceName || routeParams.title
+        ),
 
-    category: formatDisplay(routeParams.category),
+        category: formatDisplay(routeParams.category),
 
-    customer: formatDisplay(
-        routeParams.customerName || routeParams.customer
-    ),
+        customer: formatDisplay(
+            routeParams.customerName || routeParams.customer
+        ),
 
-    customerPhone: routeParams.customerPhone || '',
+        customerPhone: routeParams.customerPhone || '',
 
-    address: formatDisplay(
-        routeParams.address || fullAddress
-    ),
+        address: formatDisplay(
+            routeParams.address || fullAddress
+        ),
 
-    date: formatDisplay(
-        routeParams.serviceDate || routeParams.date
-    ),
+        date: formatDisplay(
+            routeParams.serviceDate || routeParams.date
+        ),
 
-    startTime: formatDisplay(
-        routeParams.startTime || routeParams.time
-    ),
+        startTime: formatDisplay(
+            routeParams.startTime || routeParams.time
+        ),
 
-    endTime: formatDisplay(routeParams.endTime),
+        endTime: formatDisplay(routeParams.endTime),
 
-    duration: formatDisplay(
-        routeParams.duration || routeParams.hours
-    ),
+        duration: formatDisplay(
+            routeParams.duration || routeParams.hours
+        ),
 
-    serviceCharges: serviceRate,
-    gst: 0,
-    platformFee: 0,
-    netEarnings: serviceRate,
+        serviceCharges: serviceRate,
+        gst: 0,
+        platformFee: 0,
+        netEarnings: serviceRate,
 
-    walletBalance: null,
-    customerRating: 0,
-    customerFeedback: '',
-    customerFeedbackSubmitted: false,
+        walletBalance: null,
+        customerRating: 0,
+        customerFeedback: '',
+        customerFeedbackSubmitted: false,
 
-    checklist: {
-        otpVerified: true,
-        serviceCompleted: true,
-        photosUploaded:true,
-        paymentConfirmed: true,
-    },
-
-    timeline: [
-        {
-            id: 1,
-            event: 'Started Service',
-            time: formatDisplay(
-                routeParams.startTime || routeParams.time,
-                '--'
-            ),
-            completed: Boolean(
-                routeParams.startTime || routeParams.time
-            ),
-            image: require('../../asset/play-circle-outline.png'),
+        checklist: {
+            otpVerified: true,
+            serviceCompleted: true,
+            photosUploaded: true,
+            paymentConfirmed: true,
         },
-        {
-            id: 2,
-            event: 'Work Completed',
-            time: formatDisplay(routeParams.endTime, '--'),
-            completed: true,
-            image: require('../../asset/checked.png'),
-        },
-        // {
-        //     id: 3,
-        //     event: 'OTP Verified',
-        //     time: '--',
-        //     completed: Boolean(routeParams.otpVerified),
-        //     image: require('../../asset/shield.png'),
-        //     completed: true,
-        // },
-        {
-            id: 4,
-            event: 'Job Closed',
-            time: formatDisplay(routeParams.endTime, '--'),
-            completed: true,
-            image: require('../../asset/flag.png'),
-        },
-    ],
 
-    nextJob: null,
+        timeline: [
+            {
+                id: 1,
+                event: 'Started Service',
+                time: formatDisplay(
+                    routeParams.startTime || routeParams.time,
+                    '--'
+                ),
+                completed: Boolean(
+                    routeParams.startTime || routeParams.time
+                ),
+                image: require('../../asset/play-circle-outline.png'),
+            },
+            {
+                id: 2,
+                event: 'Work Completed',
+                time: formatDisplay(routeParams.endTime, '--'),
+                completed: true,
+                image: require('../../asset/checked.png'),
+            },
+            // {
+            //     id: 3,
+            //     event: 'OTP Verified',
+            //     time: '--',
+            //     completed: Boolean(routeParams.otpVerified),
+            //     image: require('../../asset/shield.png'),
+            //     completed: true,
+            // },
+            {
+                id: 4,
+                event: 'Job Closed',
+                time: formatDisplay(routeParams.endTime, '--'),
+                completed: true,
+                image: require('../../asset/flag.png'),
+            },
+        ],
 
-    achievements: {
-        count: null,
-        message: '',
-    },
-};
+        nextJob: null,
+
+        achievements: {
+            count: null,
+            message: '',
+        },
+    };
 
     useEffect(() => {
         Animated.parallel([
@@ -288,21 +292,79 @@ const JobCompletionScreen = ({ navigation,route  }) => {
         };
     }, []);
 
-    const submitFeedback = () => {
+    const submitFeedback = async () => {
         if (customerRating === 0) {
-            Alert.alert('Rating Required', 'Please select a rating for the customer');
+            Alert.alert('Rating Required', 'Please select a rating for the customer.');
             return;
         }
+
         if (!customerFeedback.trim()) {
-            Alert.alert('Feedback Required', 'Please provide your feedback');
+            Alert.alert('Feedback Required', 'Please provide your feedback.');
             return;
         }
 
-        setFeedbackSubmitted(true);
-        setRatingSubmitted(true);
-        Alert.alert('Thank You!', 'Your feedback has been submitted successfully.');
-    };
+        // Get partner ID from navigation params
+        const partnerId = routeParams.bookingDetailId || routeParams.id;
 
+        if (!partnerId) {
+            Alert.alert('Error', 'Partner ID is missing.');
+            return;
+        }
+
+        if (isSubmittingFeedback) {
+            return;
+        }
+
+        try {
+            setIsSubmittingFeedback(true);
+
+            const token = await AsyncStorage.getItem('token');
+
+            if (!token) {
+                Alert.alert('Error', 'Authentication token not found. Please login again.');
+                return;
+            }
+
+            const payload = {
+                rating: customerRating,
+                comment: customerFeedback.trim(),
+            };
+
+            const response = await fetch(API.PARTNER_REVIEW(partnerId), {
+                method: 'POST',
+                headers: {
+                    Accept: '*/*',
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+
+            console.log('Review API response:', result);
+
+            if (response.ok && result.success) {
+                setFeedbackSubmitted(true);
+                setRatingSubmitted(true);
+
+                Alert.alert(
+                    'Thank You!',
+                    result.message || 'Your feedback has been submitted successfully.'
+                );
+            } else {
+                Alert.alert(
+                    'Error',
+                    result.message || 'Unable to submit feedback. Please try again.'
+                );
+            }
+        } catch (error) {
+            console.log('Submit feedback error:', error);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
+        } finally {
+            setIsSubmittingFeedback(false);
+        }
+    };
     const handleCall = (phoneNumber) => {
         if (phoneNumber) {
             Linking.openURL(`tel:${phoneNumber}`).catch(() => {
@@ -509,7 +571,7 @@ const JobCompletionScreen = ({ navigation,route  }) => {
                     <Text style={styles.cardTitle}>Service Summary</Text>
 
                     <View style={styles.summaryGrid}>
-                        
+
                         <View style={styles.summaryItem}>
                             <Text style={styles.summaryLabel}>Booking ID</Text>
                             <Text style={styles.summaryValue}>{jobData.bookingId}</Text>
@@ -521,7 +583,7 @@ const JobCompletionScreen = ({ navigation,route  }) => {
                             <Text style={styles.summaryLabel}>Service</Text>
                             <Text style={styles.summaryValue}>{jobData.service}</Text>
                         </View>
-                        
+
                     </View>
 
                     <View style={styles.summaryGrid}>
@@ -631,20 +693,31 @@ const JobCompletionScreen = ({ navigation,route  }) => {
 
                             {/* Submit Button */}
                             <TouchableOpacity
-                                style={styles.ratingSubmitButton}
+                                style={[
+                                    styles.ratingSubmitButton,
+                                    { opacity: isSubmittingFeedback ? 0.6 : 1 },
+                                ]}
                                 onPress={submitFeedback}
+                                disabled={isSubmittingFeedback}
                             >
-                                <Text style={styles.ratingSubmitText}>Submit Feedback</Text>
+                                {isSubmittingFeedback ? (
+                                    <ActivityIndicator color="#FFFFFF" />
+                                ) : (
+                                    <>
+                                        <Text style={styles.ratingSubmitText}>
+                                            Submit Feedback
+                                        </Text>
 
-                                <Image
-                                    source={require('../../asset/right-arrow.png')}
-                                    style={{
-                                        width: 20,
-                                        height: 20,
-                                        tintColor: "#FFFFFF",
-
-                                    }}
-                                />
+                                        <Image
+                                            source={require('../../asset/right-arrow.png')}
+                                            style={{
+                                                width: 20,
+                                                height: 20,
+                                                tintColor: '#FFFFFF',
+                                            }}
+                                        />
+                                    </>
+                                )}
                             </TouchableOpacity>
                         </View>
                     </Animated.View>
@@ -673,8 +746,8 @@ const JobCompletionScreen = ({ navigation,route  }) => {
                         <Text style={styles.paymentLabel}>Service Charges</Text>
                         <Text style={styles.paymentValue}>₹{jobData.serviceCharges}</Text>
                     </View>
-                   
-                   
+
+
                     {/* <View style={[styles.paymentRow, styles.paymentTotal]}>
                         <Text style={styles.paymentTotalLabel}>Total</Text>
                         <Text style={styles.paymentTotalValue}>₹{jobData.netEarnings}</Text>
@@ -696,12 +769,12 @@ const JobCompletionScreen = ({ navigation,route  }) => {
                                 }}
                             />
                             <Text style={styles.paymentModeBadgeText}>
-                               Online Payment' 
+                                Online Payment'
                             </Text>
                         </View>
                     </View>
 
-                  
+
                 </Animated.View>
 
                 {/* Customer Feedback from Customer */}
